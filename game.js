@@ -5555,6 +5555,7 @@ const Orb = {
       vertexShader: `attribute float alpha; varying float vA; varying float vS; void main(){ vA = alpha; vS = float(gl_VertexID % 2); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `uniform vec3 c; uniform vec3 c2; varying float vA; varying float vS; void main(){ float m = 1.0 - abs(vS * 2.0 - 1.0); gl_FragColor = vec4(mix(c, c2, m) * vA * vA * (0.25 + m) * 0.8, 1.0); }` }));
     this.trailMesh.frustumCulled = false; this.trailMesh.visible = false; scene.add(this.trailMesh);
+    this.initBurn(scene);
     this.overlay = $('orbfx');
     this.attach(game.player, 'player', game);
     for (const S of PORTAL_SITES) {
@@ -5629,7 +5630,7 @@ const Orb = {
     this.gTime += dt; this.glints.material.uniforms.t.value = this.gTime;
     if (this.gDirty) { const A = this.glints.geometry.attributes; A.position.needsUpdate = A.aVel.needsUpdate = A.aT.needsUpdate = A.aS.needsUpdate = true; this.gDirty = false; }
     const fl = this.flashMesh; if (fl.visible) { fl.userData.t += dt; const k = fl.userData.t / 0.45; fl.scale.setScalar(0.4 + k * (fl.userData.s || 5)); fl.material.opacity = 0.7 * (1 - k); if (k >= 1) fl.visible = false; }
-    this.updateTrail(dt, game);
+    this.updateTrail(dt, game); this.updateBurn(game);
     // Energy Drift scoring and the Energy bar (free roam)
     const orb = P.form === 'orb';
     document.body.classList.toggle('orb-on', orb);
@@ -5660,6 +5661,58 @@ const Orb = {
     if (!on) return;
     const w = Math.round(this.energy * 100); if (w !== this.ew) { this.ew = w; $('energy-fill').style.width = w + '%'; bar.classList.toggle('low', this.energy < 0.2); }
     if (this.chain) { const s = Math.round(this.chain.pts).toLocaleString(), m = this.chain.mult; if (s !== this.cs || m !== this.cm) { this.cs = s; this.cm = m; $('ed-score').textContent = s; $('ed-mult').textContent = m > 1 ? '×' + m : ''; } }
+  },
+  // The burn line: where an orb runs along the ground it leaves a glowing seam of energy that cools to a dark scorch
+  // and fades. One ring buffer of ground quads, drawn twice (an additive glow over a darkening scorch).
+  initBurn(scene) {
+    const N = this.bN = 1600, g = new THREE.BufferGeometry(), idx = [];
+    this.bP = new Float32Array(N * 4 * 3); this.bT = new Float32Array(N * 4 * 3); this.bI = 0;
+    for (let i = 0; i < N; i++) { const a = i * 4; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    this.bT.fill(-999);
+    g.setAttribute('position', new THREE.BufferAttribute(this.bP, 3)); g.setAttribute('aT', new THREE.BufferAttribute(this.bT, 3)); g.setAttribute('aC', new THREE.BufferAttribute(new Float32Array(N * 4 * 3), 3));
+    g.setAttribute('aC2', new THREE.BufferAttribute(new Float32Array(N * 4 * 3), 3)); g.setIndex(idx);
+    const vs = `attribute vec3 aT; attribute vec3 aC; attribute vec3 aC2; varying vec3 vT; varying vec3 vC; varying vec3 vC2; void main(){ vT = aT; vC = aC; vC2 = aC2; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+    const common = { transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, uniforms: { t: { value: 0 } }, vertexShader: vs };
+    // aT = (birth time, side -1..1, scorch 0/1)
+    const scorch = new THREE.ShaderMaterial({ ...common, uniforms: { t: { value: 0 } },
+      fragmentShader: `uniform float t; varying vec3 vT; void main(){ float age = t - vT.x; float e = 1.0 - vT.y * vT.y; float a = 0.5 * e * vT.z * (1.0 - smoothstep(4.0, 14.0, age)) * smoothstep(0.0, 0.3, age); if (a < 0.003) discard; gl_FragColor = vec4(0.06, 0.03, 0.06, a); }` });
+    const glow = new THREE.ShaderMaterial({ ...common, uniforms: { t: { value: 0 } }, blending: THREE.AdditiveBlending,
+      fragmentShader: `uniform float t; varying vec3 vT; varying vec3 vC; varying vec3 vC2;
+        void main(){ float age = t - vT.x; float s = abs(vT.y); float core = pow(1.0 - s, 4.0), halo = pow(1.0 - s, 1.6);
+          float k = exp(-age * 1.1) * (0.85 + 0.15 * sin(t * 40.0 + vT.x * 90.0)); if (k < 0.004) discard;
+          vec3 c = mix(vC2, vC, smoothstep(0.0, 1.2, age)) * (core * 1.6 + halo * 0.45) * k;
+          gl_FragColor = vec4(c, 1.0);
+          #include <colorspace_fragment>
+        }` });
+    this.burnMats = [scorch, glow];
+    for (const m of this.burnMats) { const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 2; scene.add(mesh); }
+    this.burnGeo = g;
+  },
+  burnSeg(a, b, fx, deep, hot, scorchOn) {
+    const i = this.bI; this.bI = (i + 1) % this.bN;
+    const dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L, w = 0.42;
+    const P = this.bP, T = this.bT, C = this.burnGeo.attributes.aC.array, C2 = this.burnGeo.attributes.aC2.array, o = i * 4;
+    const pts = [[a.x + nx * w, a.y, a.z + nz * w, -1, a.t], [a.x - nx * w, a.y, a.z - nz * w, 1, a.t], [b.x + nx * w, b.y, b.z + nz * w, -1, b.t], [b.x - nx * w, b.y, b.z - nz * w, 1, b.t]];
+    pts.forEach(([x, y, z, sd, bt], k) => { const j = (o + k) * 3; P[j] = x; P[j + 1] = y; P[j + 2] = z; T[j] = bt; T[j + 1] = sd; T[j + 2] = scorchOn ? 1 : 0; C[j] = deep.r; C[j + 1] = deep.g; C[j + 2] = deep.b; C2[j] = hot.r; C2[j + 1] = hot.g; C2[j + 2] = hot.b; });
+    this.burnDirty = true;
+  },
+  updateBurn(game) {
+    const t = this.gTime;
+    for (const m of this.burnMats) m.uniforms.t.value = t;
+    if (!game.replaying) for (const V of [game.player, ...Race.ai.map(a => a.veh)]) {
+      const fx = V.orbFx;
+      if (!fx || V.form !== 'orb' || !V.onGround) { V.burnLast = null; continue; }
+      const y = (V.onWater ? V.pos.y : surfaceHeight(V.pos.x, V.pos.z, V.pos.y + 0.5)) + 0.04;
+      const cur = { x: V.pos.x, y, z: V.pos.z, t };
+      const L = V.burnLast;
+      if (!L || Math.hypot(cur.x - L.x, cur.z - L.z) > 6 || Math.abs(cur.y - L.y) > 1.5) { V.burnLast = cur; continue; } // (a reset or a jump: start a new line)
+      if (Math.hypot(cur.x - L.x, cur.z - L.z) < 0.45) continue;
+      fx.dc = fx.dc || new THREE.Color(fx.deep); fx.hc = fx.hc || new THREE.Color(fx.hot);
+      const nf = V.nosFire || 0, hot = nf > 0.3 ? (this._ice || (this._ice = new THREE.Color(0xd8f0ff))) : fx.hc, deep = nf > 0.3 ? (this._blue2 || (this._blue2 = new THREE.Color(0x2f7bff))) : fx.dc;
+      this.burnSeg(L, cur, fx, deep, hot, !V.onWater);
+      V.burnLast = cur;
+    }
+    if (this.burnDirty) { const A = this.burnGeo.attributes; A.position.needsUpdate = A.aT.needsUpdate = A.aC.needsUpdate = A.aC2.needsUpdate = true; this.burnDirty = false; }
   },
   updateTrail(dt, game) {
     const P = game.player, on = P.form === 'orb', T = this.trail;
@@ -6007,6 +6060,19 @@ const Sound = {
     const c = this.car; if (c && c.rpm > 5200 && Math.random() < 0.3) setTimeout(() => this.play('backfire', 0.26, 1.04 + Math.random() * 0.08), 80);
   },
   land(k) { if (!this.play('land', 0.4 + 0.6 * k)) this.thud(k); },
+  // the Energy Orb hitting something: an electric crackle and a deep 'bwom', no crunching metal
+  orbHit(k, soft) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, v = soft ? 0.5 : 1;
+    const s = ctx.createBufferSource(); s.buffer = this.nb; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.1;
+    f.frequency.setValueAtTime(soft ? 2400 : 4200, t); f.frequency.exponentialRampToValueAtTime(700, t + 0.28);
+    const am = ctx.createGain(); am.gain.value = 0.5; const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 45 + Math.random() * 50; const lg = ctx.createGain(); lg.gain.value = 0.5; lfo.connect(lg).connect(am.gain);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.001, t); g.gain.exponentialRampToValueAtTime((0.12 + 0.3 * k) * v, t + 0.008); g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    s.connect(f).connect(am).connect(g).connect(this.comp); s.start(t); s.stop(t + 0.34); lfo.start(t); lfo.stop(t + 0.34);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(soft ? 160 : 230 + 120 * k, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.4);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.001, t); og.gain.exponentialRampToValueAtTime((0.15 + 0.35 * k) * v, t + 0.02); og.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    o.connect(og).connect(this.comp); o.start(t); o.stop(t + 0.47);
+  },
   crash(k) { if (!this.play(k > 0.55 ? 'crash_heavy' : 'crash_light', Math.min(1, 0.35 + k))) this.thud(k); },
   thunder() { if (!this.play('thunder', 0.8, 1, 0, this.ambBus)) this.thud(0.9); },
   thud(k) {
@@ -6054,7 +6120,9 @@ const Input = {
     m.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
     const stop = (e) => e.preventDefault(), inMenu = (e) => e.target && e.target.closest && e.target.closest('.card');
     for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, stop, { passive: false });
-    document.addEventListener('touchstart', (e) => { if (e.touches.length > 1 && !inMenu(e)) e.preventDefault(); }, { passive: false });
+    // a touch that lands on the game itself (not a button, pedal or menu) does nothing at all: no zoom, no magnifier, no scroll
+    const usable = (e) => e.target && e.target.closest && e.target.closest('button, a, input, select, textarea, .card, [data-touch], #fsios');
+    document.addEventListener('touchstart', (e) => { if ((e.touches.length > 1 && !inMenu(e)) || !usable(e)) e.preventDefault(); }, { passive: false });
     document.addEventListener('touchmove', (e) => { if (!inMenu(e) || e.touches.length > 1) e.preventDefault(); }, { passive: false });
     let lastEnd = 0;
     document.addEventListener('touchend', (e) => { const now = performance.now(), quick = now - lastEnd < 380; lastEnd = now; if (quick && !inMenu(e) && !(e.target.closest && e.target.closest('button'))) e.preventDefault(); }, { passive: false });
@@ -7278,16 +7346,19 @@ const Fullscreen = {
     return true;
   },
   exit() { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) { } },
-  tip(ui) { ui.toast(this.ios() ? 'Full screen on iPhone: tap <b>Share</b> then <b>Add to Home Screen</b>, and play from the icon' : 'Full screen isn\'t available in this view', 'wx'); },
+  tip(ui) { if (this.ios()) { $('fsios').hidden = false; if (ui.game && ui.game.driving && !ui.game.paused) { this.pausedForTip = true; ui.game.togglePause(true); $('pause').hidden = true; } } else ui.toast('Full screen isn\'t available in this view', 'wx'); },
   toggle(ui) { if (this.is()) this.exit(); else if (this.can()) this.enter(); else if (!this.standalone()) this.tip(ui); },
   auto(ui) { // on Start driving (a tap, so the browser allows it)
     if (this.standalone() || this.is()) return;
     if (this.can()) this.enter();
-    else if (this.ios() && !store.get('fs-tip', false)) { store.set('fs-tip', true); setTimeout(() => this.tip(ui), 2500); }
+    else if (this.ios() && !store.get('fs-tip2', false)) { store.set('fs-tip2', true); setTimeout(() => this.tip(ui), 1500); }
   },
   init(ui) {
     const btn = $('b-fs'), sync = () => { document.body.classList.toggle('fs', this.is()); btn.hidden = this.standalone() || (!this.can() && !document.body.classList.contains('touch')); if (ui.game) ui.syncToggles(); };
     btn.onclick = () => this.toggle(ui);
+    $('b-fsios').hidden = !(this.ios() && !this.standalone() && !this.can());
+    $('b-fsios').onclick = () => this.tip(ui);
+    $('fsios-ok').onclick = () => { $('fsios').hidden = true; if (this.pausedForTip) { this.pausedForTip = false; ui.game.togglePause(false); } };
     $('p-fs').onclick = () => this.toggle(ui);
     document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync);
     sync();
@@ -7472,8 +7543,9 @@ const Game = {
       NosFX.update(simDt, this);
       Challenges.update(simDt, this); WxDirector.update(simDt, this); Rumble.update(simDt, this);
       if (P.inWater > 1.6) { UI.flash(Sky.splashdown ? 'Splashdown! Welcome back to Earth' : 'Splash! Back to the road', Sky.splashdown ? 2 : 1.2); this.respawn(); }
-      const landedNow = P.landed > 0; if (landedNow) { Sound.land(P.landed); P.landed = 0; }
-      if (P.impact > 0.25) { if (!landedNow) Sound.crash(P.impact); this.shake = Math.max(this.shake || 0, P.impact * 0.5); Rumble.pulse(Math.min(1, P.impact * 1.2), P.impact * 0.7, 120 + P.impact * 220); NosPlay.lastHit = 0; P.impact = 0; }
+      const orbNow = P.form === 'orb';
+      const landedNow = P.landed > 0; if (landedNow) { if (orbNow) Sound.orbHit(P.landed, true); else Sound.land(P.landed); P.landed = 0; }
+      if (P.impact > 0.25) { if (!landedNow) { if (orbNow) { Sound.orbHit(P.impact); Orb.glintBurst(P, P.orbFx, 40, 2, 7, 0.4); } else Sound.crash(P.impact); } this.shake = Math.max(this.shake || 0, P.impact * 0.5); Rumble.pulse(Math.min(1, P.impact * 1.2), P.impact * 0.7, 120 + P.impact * 220); NosPlay.lastHit = 0; P.impact = 0; }
     }
     // free-roam race prompt
     if (this.driving && Race.state === 'free') {
@@ -7616,6 +7688,10 @@ const Game = {
       fov = M.fov + speedK * (M.id === 'rally' ? 3 : 12) + nf * (M.id === 'rally' ? 3 : 9); // NOS kicks the view wider
     }
     if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * Math.min(1, dt * ((P.nosFire || 0) > 0.05 ? 6 : 3)); cam.updateProjectionMatrix(); }
+    { // phones on their side: shift the picture up a little so the car sits clear of the dials at the bottom
+      const W = innerWidth, H = innerHeight, lift = document.body.classList.contains('touch') && W > H && H < 520 && M.id !== 'hood' ? Math.round(H * 0.09) : 0;
+      if (lift !== (this.viewLift || 0) || (lift && (cam.view?.fullWidth !== W || cam.view?.fullHeight !== H))) { this.viewLift = lift; if (lift) cam.setViewOffset(W, H, 0, lift, W, H); else cam.clearViewOffset(); }
+    }
   },
   ambience(dt) { // what the world sounds like here: sea nearby, meadow birds, day or night
     if ((this.ambT = (this.ambT || 0) - dt) > 0) return; this.ambT = 0.4;

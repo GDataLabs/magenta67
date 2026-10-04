@@ -125,6 +125,14 @@ body.touch #edrift { top: calc(52px + env(safe-area-inset-top, 0px)); }
 @media (orientation: portrait) and (max-width: 640px) { body.touch.driving:not(.upright-ok) #rotate { display: grid; } }
 .iconbtn .fs-out { display: none; } body.fs .iconbtn .fs-in { display: none; } body.fs .iconbtn .fs-out { display: inline; }
 
+/* iPhone: how to get a true full screen (Safari can't take a web page full screen; a Home Screen app can) */
+#fsios { position: absolute; inset: 0; z-index: 70; display: grid; place-items: center; background: rgba(10,16,32,.72); padding: 16px; }
+#fsios .card { width: min(440px, 100%); }
+#fsios ol { margin: 10px 0 16px; padding-left: 22px; line-height: 1.55; font-size: 15px; }
+#fsios ol svg { width: 18px; height: 18px; vertical-align: -3px; stroke: #9fe8ff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#fsios b { color: #fff; }
+#b-fsios { margin-top: 12px; }
+
 /* ---------- touch ---------- */
 #touch { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
 #touch .tb { position: absolute; pointer-events: auto; border-radius: 50%; border: 2px solid rgba(255,244,224,.55); background: rgba(20,33,61,.45); display: grid; place-items: center; touch-action: none; }
@@ -139,7 +147,11 @@ body.touch #edrift { top: calc(52px + env(safe-area-inset-top, 0px)); }
 #touch #t-nos { right: calc(112px + env(safe-area-inset-right, 0px)); bottom: calc(106px + env(safe-area-inset-bottom, 0px)); width: 60px; height: 60px; --nos: 0deg; background: conic-gradient(rgba(90,180,255,.75) var(--nos), rgba(20,33,61,.45) 0); }
 #touch #t-nos.down { background: rgba(90,180,255,.85); }
 #t-nos span { color: #c9f1ff; }
-body.touch #minimap { left: auto; right: 16px; top: calc(70px + env(safe-area-inset-top, 0px)); bottom: auto; width: 116px; height: 116px; }
+/* the map lives on the left on phones, out from under the right thumb (pedals, NOS, drift) */
+body.touch #minimap { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; width: 112px; height: 112px; }
+body.touch #place { left: calc(136px + env(safe-area-inset-left, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); padding: 7px 12px 9px; }
+body.touch #place .n { font-size: 20px; }
+html, body, #app, #app canvas, #hud, #touch { touch-action: none; -webkit-touch-callout: none; }
 body.touch #gauges { right: 50%; transform: translateX(50%); bottom: calc(6px + env(safe-area-inset-bottom, 0px)); width: 210px; height: 118px; }
 body.touch #nos { right: 50%; transform: translateX(50%); bottom: calc(126px + env(safe-area-inset-bottom, 0px)); width: 180px; padding: 5px 9px 6px; }
 body.touch #prompt { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
@@ -151,16 +163,28 @@ body.touch #prompt { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
   body.touch #chip, body.touch #edrift { top: calc(46px + env(safe-area-inset-top, 0px)); }
   body.touch.orb-on #edrift { top: calc(80px + env(safe-area-inset-top, 0px)); }
   body.touch #gauges { width: 186px; height: 104px; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); }
+  body.touch #nos { right: calc(176px + env(safe-area-inset-right, 0px)); transform: none; }
+  body.touch #energy { right: calc(176px + env(safe-area-inset-right, 0px)); transform: none; width: 190px; }
+  body.touch #place { max-width: 34vw; }
   body.touch #prompt { bottom: calc(112px + env(safe-area-inset-bottom, 0px)); }
   body.touch #toasts { top: calc(84px + env(safe-area-inset-top, 0px)); }
 }
 /* held upright (if they chose to): gauges sit above the pedals, NOS under the place sign */
 @media (orientation: portrait) and (max-width: 640px) {
   body.touch #gauges { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; transform: none; width: 186px; height: 104px; bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
-  body.touch #nos { left: 16px; right: auto; transform: none; top: calc(84px + env(safe-area-inset-top, 0px)); bottom: auto; width: 170px; }
+  body.touch #nos { left: auto; right: 16px; transform: none; top: calc(70px + env(safe-area-inset-top, 0px)); bottom: auto; width: 160px; }
+  body.touch #minimap { top: calc(84px + env(safe-area-inset-top, 0px)); }
+  body.touch #place { left: calc(12px + env(safe-area-inset-left, 0px)); max-width: calc(100vw - 190px); }
   body.touch #nos .ns { display: none; }
-  body.touch #energy { top: calc(122px + env(safe-area-inset-top, 0px)); }
-  body.touch #edrift { top: calc(158px + env(safe-area-inset-top, 0px)); }
+  body.touch #energy { left: auto; right: 16px; top: calc(108px + env(safe-area-inset-top, 0px)); width: 160px; }
+  body.touch #edrift { left: auto; right: 16px; transform: none; top: calc(146px + env(safe-area-inset-top, 0px)); }
+  body.touch #prompt { bottom: calc(236px + env(safe-area-inset-bottom, 0px)); }
+}
+/* short screens (a phone on its side with the browser's bars showing): smaller dials */
+@media (orientation: landscape) and (max-height: 430px) {
+  body.touch #gauges { width: 150px; height: 84px; }
+  body.touch #minimap { width: 96px; height: 96px; }
+  body.touch #place { left: calc(118px + env(safe-area-inset-left, 0px)); }
 }
 
 
@@ -256,6 +280,16 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
     <div id="nos" class="panel empty"><div class="nl">NOS</div><div class="bar"><i id="nos-fill"></i></div><div class="ns" id="nos-st">Charge above 100 mph</div></div>
   </div>
   <div id="nosfx"></div>
+  <div id="fsios" hidden><div class="card panel">
+    <div class="label">Full screen on iPhone</div>
+    <h2 style="margin:4px 0 0">Add it to your Home Screen</h2>
+    <ol>
+      <li>Tap <b>Share</b> <svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg> in Safari's toolbar (the <b>⋯</b> menu first if you don't see it)</li>
+      <li>Choose <b>Add to Home Screen</b>, then <b>Add</b></li>
+      <li>Open <b>Magenta '67</b> from the new icon: it plays edge to edge, with no browser bars</li>
+    </ol>
+    <button class="btn primary" id="fsios-ok">Got it</button>
+  </div></div>
   <div id="rotate"><div><svg viewBox="0 0 64 64"><rect x="20" y="8" width="24" height="42" rx="4"/><path d="M28 44h8"/><path d="M50 30a20 20 0 0 1-6 18m0 0v-7m0 7h-7"/></svg><b>Turn your phone sideways</b><span>Magenta '67 plays best in landscape</span><button class="btn small ghost" id="rot-ok">Keep playing upright</button></div></div>
   <div id="orbfx"></div>
   <div id="mirror" hidden></div>
@@ -278,6 +312,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <button class="btn primary" id="b-start">Start driving</button>
         <button class="btn ghost" id="b-howto">How to drive</button>
       </div>
+      <button class="btn small ghost" id="b-fsios" hidden>Play full screen on iPhone</button>
       <div id="howto" class="panel" hidden>
         <table>
           <tr><td>Drive</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows · gamepad triggers + stick</td></tr>
