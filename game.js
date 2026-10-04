@@ -1,4 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
+const ASSET_DATA = {"moon_albedo": "assets/moon_albedo.jpg", "moon_height": "assets/moon_height.jpg"};
 const SFX_DATA = {"engine_idle": "sfx/engine_idle.wav", "engine_low_on": "sfx/engine_low_on.wav", "engine_mid_on": "sfx/engine_mid_on.wav", "engine_high_on": "sfx/engine_high_on.wav", "engine_top_on": "sfx/engine_top_on.wav", "engine_mid_off": "sfx/engine_mid_off.wav", "engine_high_off": "sfx/engine_high_off.wav", "tyre_squeal": "sfx/tyre_squeal.wav", "gravel": "sfx/gravel.wav", "shift": "sfx/shift.mp3", "backfire": "sfx/backfire.mp3", "nos_ignite": "sfx/nos_ignite.mp3", "nos_loop": "sfx/nos_loop.wav", "turbo_spool": "sfx/turbo_spool.wav", "turbo_bov": "sfx/turbo_bov.mp3", "crash_heavy": "sfx/crash_heavy.mp3", "crash_light": "sfx/crash_light.mp3", "land": "sfx/land.mp3", "horn": "sfx/horn.mp3", "camera": "sfx/camera.mp3", "pickup": "sfx/pickup.mp3", "checkpoint": "sfx/checkpoint.mp3", "wind": "sfx/wind.wav", "surf": "sfx/surf.wav", "rain": "sfx/rain.wav", "gulls": "sfx/gulls.mp3", "birds": "sfx/birds.wav", "thunder": "sfx/thunder.mp3", "cheer": "sfx/cheer.mp3", "music_title": "sfx/music_title.mp3", "music_race": "sfx/music_race.mp3", "vo_first": "sfx/vo_first.mp3", "vo_second": "sfx/vo_second.mp3", "vo_third": "sfx/vo_third.mp3", "vo_fourth": "sfx/vo_fourth.mp3", "vo_record": "sfx/vo_record.mp3", "vo_champion": "sfx/vo_champion.mp3", "orb_hum": "sfx/orb_hum.wav", "orb_transform": "sfx/orb_transform.mp3"};
 const SFX_META = {"engine_idle": {"rpm": 749, "gain": 0.75}, "engine_low_on": {"rpm": 1772, "gain": 0.85}, "engine_mid_on": {"rpm": 4272, "gain": 1.0}, "engine_high_on": {"rpm": 5854, "gain": 1.05}, "engine_top_on": {"rpm": 6506, "gain": 1.1}, "engine_mid_off": {"rpm": 3270, "gain": 0.75}, "engine_high_off": {"rpm": 6555, "gain": 0.8}, "tyre_squeal": {"gain": 1}, "gravel": {"gain": 1}, "shift": {"gain": 1}, "backfire": {"gain": 1}, "nos_ignite": {"gain": 1}, "nos_loop": {"gain": 1}, "turbo_spool": {"gain": 1, "hz": 6568}, "turbo_bov": {"gain": 1}, "crash_heavy": {"gain": 1}, "crash_light": {"gain": 1}, "land": {"gain": 1}, "horn": {"gain": 1}, "camera": {"gain": 1}, "pickup": {"gain": 1.5}, "checkpoint": {"gain": 1}, "wind": {"gain": 1}, "surf": {"gain": 1}, "rain": {"gain": 1}, "gulls": {"gain": 1}, "birds": {"gain": 1}, "thunder": {"gain": 1}, "cheer": {"gain": 1}, "music_title": {"gain": 1}, "music_race": {"gain": 1}, "vo_first": {"gain": 1}, "vo_second": {"gain": 1}, "vo_third": {"gain": 1}, "vo_fourth": {"gain": 1}, "vo_record": {"gain": 1}, "vo_champion": {"gain": 1}, "orb_hum": {"gain": 1}, "orb_transform": {"gain": 1}};
 const TITLE_VIDEO_WEBM = null;
@@ -3242,9 +3243,9 @@ function buildDeckSamples(defs) {
   // spatial grid of segments
   const cs = Decks.cs, grid = new Map();
   Decks.list.forEach((d, di) => {
-    const S = d.samples, r = d.halfW + 1;
+    const S = d.samples;
     for (let i = 0; i < S.length - 1; i++) {
-      const a = S[i], b = S[i + 1];
+      const a = S[i], b = S[i + 1], r = Math.max(a.hw || d.halfW, b.hw || d.halfW) + 1.5; // (widened stretches, like the Cloud 9 plaza, reach further out)
       const i0 = Math.floor((Math.min(a.x, b.x) - r) / cs), i1 = Math.floor((Math.max(a.x, b.x) + r) / cs);
       const j0 = Math.floor((Math.min(a.z, b.z) - r) / cs), j1 = Math.floor((Math.max(a.z, b.z) + r) / cs);
       for (let ii = i0; ii <= i1; ii++) for (let jj = j0; jj <= j1; jj++) { const k = ii * 100003 + jj; let arr = grid.get(k); if (!arr) { arr = []; grid.set(k, arr); } arr.push(di, i); }
@@ -4325,32 +4326,56 @@ function buildSkyWorld(scene) {
   buildMoon(scene);
   buildLaunchComplex(scene);
 }
-function buildMoon(scene) {
-  const R = MOON.R, NS = 192, NR = 60, rc = MOON_CAP * R, pos = [], col = [], idx = [];
-  const tint = (x, y, z, out) => { // grey regolith with darker maria patches
-    const nx = (x - MOON.x) / R, ny = (y - MOON.y) / R, nz = (z - MOON.z) / R;
-    const mar = Noise.fbm(nx * 1.6 + ny * 0.7 + 3, nz * 1.6 - ny * 0.5, 3), fine = Noise.simplex(nx * 14 + ny * 3, nz * 14 - ny * 2);
-    let v = 0.5 + 0.045 * fine - 0.15 * smooth(0.05, 0.35, mar);
-    out[0] = v * 0.98; out[1] = v * 0.98; out[2] = v * 1.01;
+// The Moon wears a baked map of the real Moon's face (tools/make_moon.py): maria where they really are, Tycho's rays and
+// all. It's sampled by direction from the Moon's centre, with the near side turned toward the island, so the face you
+// see from the beach is the familiar one; the cap you drive on is the far side's cratered highland.
+function moonFrame() {
+  const c = new THREE.Vector3(MOON.x, MOON.y, MOON.z), n0 = new THREE.Vector3(-20, 0, 200).sub(c).normalize(); // near side looks at the island
+  const y = new THREE.Vector3(0, 1, 0).addScaledVector(n0, -n0.y).normalize(), x = new THREE.Vector3().crossVectors(y, n0); // lunar north up, east to the right
+  return new THREE.Matrix3().set(x.x, x.y, x.z, y.x, y.y, y.z, n0.x, n0.y, n0.z);
+}
+function moonMaterial() {
+  const A = (id) => (typeof ASSET_DATA !== 'undefined' && ASSET_DATA[id]) || null, tl = new THREE.TextureLoader(), opt = { roughness: 0.97, metalness: 0, emissive: 0xc8ccd8, emissiveIntensity: 0.06 };
+  if (A('moon_albedo')) {
+    const alb = tl.load(A('moon_albedo')); alb.colorSpace = THREE.SRGBColorSpace; alb.wrapS = THREE.RepeatWrapping; alb.anisotropy = 8;
+    opt.map = alb; opt.emissiveMap = alb; opt.color = 0xdcdcdc; // (a touch below white so the sunlit highlands don't wash out)
+    if (A('moon_height')) { const hm = tl.load(A('moon_height')); hm.wrapS = THREE.RepeatWrapping; opt.bumpMap = hm; opt.bumpScale = 3.5; }
+  } else opt.color = 0xa8a8a4;
+  const mat = new THREE.MeshStandardMaterial(opt), rot = moonFrame();
+  mat.customProgramCacheKey = () => 'moon-v2';
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.moonRot = { value: rot }; sh.uniforms.moonC = { value: new THREE.Vector3(MOON.x, MOON.y, MOON.z) };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform mat3 moonRot; uniform vec3 moonC; varying vec3 vMoonP;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvMoonP = moonRot * ((modelMatrix * vec4(transformed, 1.0)).xyz - moonC);');
+    // longitude/latitude per pixel; of two longitudes with their seams on opposite sides, use whichever is smooth here (no seam line)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vMoonP; vec2 moonUV;
+void moonUVcalc() { vec3 d = normalize(vMoonP); float lon = atan(d.x, d.z) / 6.2831853 + 0.5, lat = asin(clamp(d.y, -1.0, 1.0)) / 3.1415927 + 0.5;
+  float u1 = lon, u2 = fract(lon + 0.5) - 0.5; moonUV = vec2(fwidth(u1) <= fwidth(u2) + 1e-6 ? u1 : u2, lat); }`)
+      .replace('void main() {', 'void main() {\n  moonUVcalc();')
+      .replace('#include <map_fragment>', '#ifdef USE_MAP\n  diffuseColor *= texture2D( map, moonUV );\n#endif')
+      .replace('#include <emissivemap_fragment>', '#ifdef USE_EMISSIVEMAP\n  totalEmissiveRadiance *= texture2D( emissiveMap, moonUV ).rgb;\n#endif')
+      .replace('#include <bumpmap_pars_fragment>', THREE.ShaderChunk.bumpmap_pars_fragment.replaceAll('vBumpMapUv', 'moonUV'))
+      .replace('#include <fog_fragment>', '#ifdef USE_FOG\n float fogFactor = smoothstep(fogNear, fogFar, vFogDepth) * 0.12;\n gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);\n#endif');
   };
-  const c3 = [0, 0, 0];
+  return mat;
+}
+function buildMoon(scene) {
+  const R = MOON.R, NS = 192, NR = 60, rc = MOON_CAP * R, pos = [], idx = [];
   // cap: polar grid heightfield with craters
   for (let j = 0; j <= NR; j++) {
     const r = rc * j / NR;
     for (let i = 0; i < NS; i++) {
       const ph = i / NS * TAU, x = MOON.x - Math.cos(ph) * r, z = MOON.z + Math.sin(ph) * r, y = moonSurfaceY(x, z);
-      pos.push(x, y, z); tint(x, y, z, c3);
-      const cd = moonCraterDy(x, z); const k = 1 + clamp(cd * 0.08, -0.25, 0.12); col.push(c3[0] * k, c3[1] * k, c3[2] * k);
+      pos.push(x, y, z);
       if (j) { const a = (j - 1) * NS + i, b = (j - 1) * NS + (i + 1) % NS, c = j * NS + i, dd = j * NS + (i + 1) % NS; idx.push(a, c, b, b, c, dd); }
     }
   }
-  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); cg.setIndex(idx); cg.computeVertexNormals();
+  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cg.setIndex(idx); cg.computeVertexNormals();
   { let upn = 0; const nn = cg.attributes.normal; for (let i = 0; i < nn.count; i++) upn += nn.getY(i); if (upn < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } cg.setIndex(idx); cg.computeVertexNormals(); } }
   // the rest of the sphere
-  const th0 = Math.asin(MOON_CAP), sg = new THREE.SphereGeometry(R, NS, 56, 0, TAU, th0, Math.PI - th0); sg.translate(MOON.x, MOON.y, MOON.z);
-  { const p = sg.attributes.position, cc = []; for (let i = 0; i < p.count; i++) { tint(p.getX(i), p.getY(i), p.getZ(i), c3); cc.push(...c3); } sg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3)); }
-  const mat = Sky.moonMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, metalness: 0, emissive: 0xc8ccd8, emissiveIntensity: 0.06 });
-  mat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <fog_fragment>', '#ifdef USE_FOG\n float fogFactor = smoothstep(fogNear, fogFar, vFogDepth) * 0.12;\n gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);\n#endif'); };
+  const th0 = Math.asin(MOON_CAP), sg = new THREE.SphereGeometry(R, NS, 96, 0, TAU, th0, Math.PI - th0); sg.translate(MOON.x, MOON.y, MOON.z);
+  const mat = Sky.moonMat = moonMaterial();
   const cap = new THREE.Mesh(cg, mat); cap.receiveShadow = true; scene.add(cap);
   const body = new THREE.Mesh(sg, mat); scene.add(body);
   // a lander and a flag by the big crater, and some boulders
@@ -4972,7 +4997,7 @@ class Vehicle {
     if (this.pos.y <= gY) {
       if (!this.onGround && this.vy < -5) { this.impact = Math.min(1, -this.vy / 14); this.landed = this.impact; }
       this.pos.y = gY; this.vy = groundVy > 0 ? groundVy * 0.85 : (this.onGround ? groundVy : Math.max(groundVy, this.vy * 0.2)); this.onGround = true; this.air = 0; // follow the slope (downhill too)
-    } else if (!this.hopT && this.pos.y - gY < (this.onDeck && this.onGround ? (this.onDeck.sticky ? 1.2 : 0.35) : 0.14) && this.vy <= groundVy + (this.onDeck && this.onGround ? (this.onDeck.sticky ? 14 : 6) : 1.4)) { // decks hold the tyres over crests (sky roads hold on hard)
+    } else if (!this.hopT && this.pos.y - gY < (this.onDeck && this.onGround ? (this.onDeck.sticky ? 1.2 : 0.35) : 0.14) && (this.onDeck && this.onGround && this.onDeck.sticky ? true : this.vy <= groundVy + (this.onDeck && this.onGround ? 6 : 1.4))) { // decks hold the tyres over crests; sky roads hold on whatever happens (a knock on the steep launch rail used to fling the car off), you only leave them over the end
       this.pos.y = gY; this.vy = groundVy; this.onGround = true; this.air = 0;
     } else { this.onGround = false; this.air += dt; }
     this.lastGround = gY;
@@ -5032,7 +5057,9 @@ class Vehicle {
     const h = this.heading, fx = Math.sin(h), fz = Math.cos(h), lx = Math.cos(h), lz = -Math.sin(h);
     const wb = P.wheelbase / 2, tr = P.track / 2;
     if (this.onGround) {
-      const yr = this.pos.y, groundHeight = (x, z) => surfaceHeight(x, z, yr + 0.4);
+      // a wheel hanging past a deck's edge or end mustn't read the ground far below (that tipped the car on end and the
+      // slope pull then threw it off the road): heights more than ~1.2 m from the car's own are clamped
+      const yr = this.pos.y, groundHeight = (x, z) => clamp(surfaceHeight(x, z, yr + 0.4), yr - 1.2, yr + 1.2);
       const hf = (groundHeight(this.pos.x + fx * wb + lx * tr, this.pos.z + fz * wb + lz * tr) + groundHeight(this.pos.x + fx * wb - lx * tr, this.pos.z + fz * wb - lz * tr)) / 2;
       const hr = (groundHeight(this.pos.x - fx * wb + lx * tr, this.pos.z - fz * wb + lz * tr) + groundHeight(this.pos.x - fx * wb - lx * tr, this.pos.z - fz * wb - lz * tr)) / 2;
       const hl = (groundHeight(this.pos.x + lx * tr + fx * wb, this.pos.z + lz * tr + fz * wb) + groundHeight(this.pos.x + lx * tr - fx * wb, this.pos.z + lz * tr - fz * wb)) / 2;
@@ -7462,7 +7489,12 @@ const Game = {
           const nx = dx / d, nz = dz / d, pen = (R - d) / 2;
           A.pos.x -= nx * pen; A.pos.z -= nz * pen; B.pos.x += nx * pen; B.pos.z += nz * pen;
           const rv = (B.vx - A.vx) * nx + (B.vz - A.vz) * nz;
-          if (rv < 0) { const imp = -rv * 0.6; A.vx -= nx * imp; A.vz -= nz * imp; B.vx += nx * imp; B.vz += nz * imp; if (A === this.player || B === this.player) { this.player.impact = Math.max(this.player.impact, Math.min(1, -rv / 12)); } }
+          if (rv < 0) {
+            const sa = Math.hypot(A.vx, A.vz), sb = Math.hypot(B.vx, B.vz), imp = -rv * 0.6; A.vx -= nx * imp; A.vz -= nz * imp; B.vx += nx * imp; B.vz += nz * imp;
+            // a car climbing a ramp that gets slowed by a knock climbs slower too (otherwise its upward speed carries it off the ramp)
+            for (const [C, s0] of [[A, sa], [B, sb]]) { const s1 = Math.hypot(C.vx, C.vz); if (C.onGround && C.vy > 0 && s1 < s0 && s0 > 1) C.vy *= s1 / s0; }
+            if (A === this.player || B === this.player) { this.player.impact = Math.max(this.player.impact, Math.min(1, -rv / 12)); }
+          }
         }
       }
     }
