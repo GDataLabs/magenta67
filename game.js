@@ -6137,7 +6137,8 @@ const Input = {
     const T = this.touch;
     root.querySelectorAll('[data-touch]').forEach(el => {
       const k = el.dataset.touch;
-      if (k === 'left') bind(el, () => T.steer = -1, () => { if (T.steer < 0) T.steer = 0; });
+      if (k === 'wheel') this.bindWheel(el);
+      else if (k === 'left') bind(el, () => T.steer = -1, () => { if (T.steer < 0) T.steer = 0; });
       else if (k === 'right') bind(el, () => T.steer = 1, () => { if (T.steer > 0) T.steer = 0; });
       else if (k === 'gas') bind(el, () => T.gas = 1, () => T.gas = 0);
       else if (k === 'brake') bind(el, () => T.brake = 1, () => T.brake = 0);
@@ -6145,6 +6146,49 @@ const Input = {
       else if (k === 'nos') bind(el, () => T.nos = 1, () => T.nos = 0);
       else bind(el, () => this.actions.push(k), () => { });
     });
+  },
+  // Phones: a steering wheel. Grab the rim and turn it (like a real wheel: thumb at the top moving right turns right),
+  // or put a thumb on the hub and slide sideways. Any angle in between is a matching amount of steering; let go and it
+  // springs back to centre. Pause menu → Steering swaps it for the old ◀ ▶ buttons.
+  WHEEL_MAX: 110, // degrees of wheel for full lock
+  steerMode: (() => { try { return localStorage.getItem('m67-steer') === 'arrows' ? 'arrows' : 'wheel'; } catch (e) { return 'wheel'; } })(),
+  setSteerMode(m) {
+    this.steerMode = m === 'arrows' ? 'arrows' : 'wheel';
+    document.body.classList.toggle('arrows', this.steerMode === 'arrows');
+    try { localStorage.setItem('m67-steer', this.steerMode); } catch (e) { }
+    this.touch.steer = 0; this.tSteer = 0; if (this.wheel) { this.wheel.held = null; this.wheel.ang = 0; this.wheel.el.classList.remove('down'); }
+  },
+  bindWheel(el) {
+    const W = this.wheel = { el, rot: el.querySelector('.wrot'), ang: 0, shown: 0, held: null, mode: 'turn', ref: 0, x0: 0, a0: 0, cx: 0, cy: 0, R: 1 };
+    const geo = () => { const r = el.getBoundingClientRect(); W.cx = r.left + r.width / 2; W.cy = r.top + r.height / 2; W.R = Math.max(30, r.width / 2); };
+    const angOf = (e) => Math.atan2(e.clientX - W.cx, -(e.clientY - W.cy)); // 0 = top, clockwise +
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); if (W.held !== null) return;
+      W.held = e.pointerId; el.setPointerCapture?.(e.pointerId); this.usingTouch = true; el.classList.add('down'); geo();
+      const r = Math.hypot(e.clientX - W.cx, e.clientY - W.cy);
+      W.mode = r < W.R * 0.36 ? 'slide' : 'turn'; // thumb on the hub slides; thumb on the rim turns
+      W.ref = angOf(e); W.x0 = e.clientX; W.a0 = W.ang;
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== W.held) return; e.preventDefault();
+      if (W.mode === 'slide') { W.ang = clamp(W.a0 + (e.clientX - W.x0) / W.R * this.WHEEL_MAX * 0.95, -this.WHEEL_MAX, this.WHEEL_MAX); return; }
+      const a = angOf(e), r = Math.hypot(e.clientX - W.cx, e.clientY - W.cy);
+      if (r < W.R * 0.2) { W.ref = a; return; } // over the hub the angle jumps about: just re-anchor
+      let d = a - W.ref; if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
+      W.ref = a; W.ang = clamp(W.ang + d * 180 / Math.PI, -this.WHEEL_MAX, this.WHEEL_MAX);
+    });
+    const end = (e) => { if (e.pointerId !== W.held) return; W.held = null; el.classList.remove('down'); };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+    window.addEventListener('blur', () => { W.held = null; el.classList.remove('down'); });
+    document.body.classList.toggle('arrows', this.steerMode === 'arrows');
+  },
+  // the wheel's steering this frame (and its spring back to centre when let go)
+  wheelSteer(dt) {
+    const W = this.wheel; if (!W) return 0;
+    if (W.held === null && W.ang !== 0) { W.ang *= Math.exp(-13 * dt); if (Math.abs(W.ang) < 0.4) W.ang = 0; }
+    if (Math.abs(W.ang - W.shown) > 0.05 && W.rot) { W.shown = W.ang; W.rot.style.transform = 'rotate(' + W.ang.toFixed(1) + 'deg)'; }
+    const a = Math.abs(W.ang), dz = 3;
+    return a <= dz ? 0 : Math.sign(W.ang) * Math.pow(Math.min(1, (a - dz) / (this.WHEEL_MAX - dz)), 1.2);
   },
   poll(dt) {
     const k = this.keys;
@@ -6160,7 +6204,7 @@ const Input = {
     let steer = this.steerKb;
     // touch
     const T = this.touch;
-    if (this.usingTouch) { gas = Math.max(gas, T.gas); brake = Math.max(brake, T.brake); hb = Math.max(hb, T.hb); nos = Math.max(nos, T.nos); if (T.steer) { this.tSteer = (this.tSteer || 0) + clamp(T.steer - (this.tSteer || 0), -4 * dt, 4 * dt); } else this.tSteer = (this.tSteer || 0) * Math.max(0, 1 - 9 * dt); if (Math.abs(this.tSteer) > Math.abs(steer)) steer = this.tSteer; }
+    if (this.usingTouch) { gas = Math.max(gas, T.gas); brake = Math.max(brake, T.brake); hb = Math.max(hb, T.hb); nos = Math.max(nos, T.nos); if (this.steerMode === 'wheel' && this.wheel) this.tSteer = this.wheelSteer(dt); else if (T.steer) { this.tSteer = (this.tSteer || 0) + clamp(T.steer - (this.tSteer || 0), -4 * dt, 4 * dt); } else this.tSteer = (this.tSteer || 0) * Math.max(0, 1 - 9 * dt); if (Math.abs(this.tSteer) > Math.abs(steer)) steer = this.tSteer; }
     // gamepad
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const p = pads && [...pads].find(x => x && x.connected);
@@ -7013,6 +7057,7 @@ const UI = {
     $('p-tod').onclick = () => { const K = Object.keys(LIGHTING); game.setLighting(K[(K.indexOf(game.env.preset) + 1) % K.length]); this.syncToggles(); };
     $('p-wx').onclick = () => { const K = Object.keys(WEATHER); game.setWeather(K[(K.indexOf(game.env.wx) + 1) % K.length]); this.syncToggles(); };
     $('p-tch').onclick = () => { this.setTouch(!document.body.classList.contains('touch')); this.syncToggles(); };
+    $('p-steer').onclick = () => { Input.setSteerMode(Input.steerMode === 'wheel' ? 'arrows' : 'wheel'); this.syncToggles(); };
     $('pr-go').onclick = () => game.openRaceCard();
     $('rc-go').onclick = () => { $('racecard').hidden = true; game.paused = false; Race.start(game.pendingRace, game); this.raceMode(true); };
     $('rc-no').onclick = () => { $('racecard').hidden = true; game.paused = false; };
@@ -7044,6 +7089,7 @@ const UI = {
     $('p-tod-v').textContent = LIGHTING[g.env.preset].label;
     $('p-wx-v').textContent = WEATHER[g.env.wx].label;
     $('p-tch-v').textContent = document.body.classList.contains('touch') ? 'On' : 'Off';
+    $('p-steer-v').textContent = Input.steerMode === 'wheel' ? 'Wheel' : 'Buttons';
     $('p-fs-v').textContent = Fullscreen.is() || Fullscreen.standalone() ? 'On' : 'Off';
     $('p-ghost-v').textContent = Ghost.on ? 'On' : 'Off';
     $('p-mirror-v').textContent = Mirror.on ? 'On' : 'Off';
@@ -7429,7 +7475,7 @@ const Game = {
     playTitleVideo();
     this.last = performance.now();
     this.placeTimer = 0;
-    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER });
+    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input });
     window.claude?.hot?.snapshot?.(() => ({ x: this.player.pos.x, z: this.player.pos.z, heading: this.player.heading, driving: this.driving }));
     if (saved.driving) this.startDriving(true);
     // first touch or key on the title screen wakes the audio so the title music can play

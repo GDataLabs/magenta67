@@ -147,6 +147,23 @@ body.touch #edrift { top: calc(52px + env(safe-area-inset-top, 0px)); }
 #touch #t-nos { right: calc(112px + env(safe-area-inset-right, 0px)); bottom: calc(106px + env(safe-area-inset-bottom, 0px)); width: 60px; height: 60px; --nos: 0deg; background: conic-gradient(rgba(90,180,255,.75) var(--nos), rgba(20,33,61,.45) 0); }
 #touch #t-nos.down { background: rgba(90,180,255,.85); }
 #t-nos span { color: #c9f1ff; }
+/* the steering wheel (phones): grab the rim and turn it, or slide a thumb on the hub; springs back when let go */
+#touch .tw { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%; left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 160px; height: 160px; }
+#touch .tw::before { content: ''; position: absolute; inset: 9%; border-radius: 50%; background: radial-gradient(circle, rgba(20,33,61,.18) 0 60%, rgba(20,33,61,0) 61%); }
+#touch .tw::after { content: ''; position: absolute; left: 50%; top: -7px; margin-left: -6px; border: 6px solid transparent; border-top: 8px solid rgba(255,244,224,.75); border-bottom: 0; } /* fixed centre mark */
+#touch .tw .wrot { position: absolute; inset: 0; will-change: transform; }
+#touch .tw svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.w-rim { fill: none; stroke: rgba(96,54,30,.82); stroke-width: 15; }
+.w-edge { fill: none; stroke: rgba(255,244,224,.55); stroke-width: 1.8; }
+.w-mark { fill: none; stroke: var(--magenta); stroke-width: 15; }
+.w-spk path { fill: rgba(212,217,226,.74); stroke: rgba(255,255,255,.4); stroke-width: 1; }
+.w-hole circle { fill: rgba(20,33,61,.85); }
+.w-hub { fill: rgba(20,33,61,.86); stroke: rgba(255,244,224,.75); stroke-width: 2.2; }
+.w-67 { fill: var(--magenta-hi); font-family: var(--f-ui); font-weight: 900; font-size: 22px; text-anchor: middle; }
+#touch .tw.down svg { filter: drop-shadow(0 0 7px rgba(224,24,110,.75)); }
+#touch .tw.down .w-edge { stroke: var(--magenta-hi); }
+body:not(.arrows) #t-left, body:not(.arrows) #t-right, body.arrows #t-wheel { display: none; }
+body:not(.touch) #p-steer { display: none; }
 /* the map lives on the left on phones, out from under the right thumb (pedals, NOS, drift) */
 body.touch #minimap { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; width: 112px; height: 112px; }
 body.touch #place { left: calc(136px + env(safe-area-inset-left, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); padding: 7px 12px 9px; }
@@ -172,6 +189,7 @@ body.touch #prompt { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
 /* held upright (if they chose to): gauges sit above the pedals, NOS under the place sign */
 @media (orientation: portrait) and (max-width: 640px) {
   body.touch #gauges { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; transform: none; width: 186px; height: 104px; bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  body.touch:not(.arrows) #gauges { bottom: calc(182px + env(safe-area-inset-bottom, 0px)); }
   body.touch #nos { left: auto; right: 16px; transform: none; top: calc(70px + env(safe-area-inset-top, 0px)); bottom: auto; width: 160px; }
   body.touch #minimap { top: calc(84px + env(safe-area-inset-top, 0px)); }
   body.touch #place { left: calc(12px + env(safe-area-inset-left, 0px)); max-width: calc(100vw - 190px); }
@@ -179,12 +197,14 @@ body.touch #prompt { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
   body.touch #energy { left: auto; right: 16px; top: calc(108px + env(safe-area-inset-top, 0px)); width: 160px; }
   body.touch #edrift { left: auto; right: 16px; transform: none; top: calc(146px + env(safe-area-inset-top, 0px)); }
   body.touch #prompt { bottom: calc(236px + env(safe-area-inset-bottom, 0px)); }
+  body.touch:not(.arrows) #prompt { bottom: calc(300px + env(safe-area-inset-bottom, 0px)); }
 }
 /* short screens (a phone on its side with the browser's bars showing): smaller dials */
 @media (orientation: landscape) and (max-height: 430px) {
   body.touch #gauges { width: 150px; height: 84px; }
   body.touch #minimap { width: 96px; height: 96px; }
   body.touch #place { left: calc(118px + env(safe-area-inset-left, 0px)); }
+  #touch .tw { width: 140px; height: 140px; }
 }
 
 
@@ -295,6 +315,13 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
   <div id="mirror" hidden></div>
   <div id="replay" class="panel" hidden><div class="rl">Replay</div><div class="bar"><i id="rp-fill"></i></div><button class="btn small" id="rp-skip">Skip</button></div>
   <div id="touch" hidden>
+    <div class="tw" id="t-wheel" data-touch="wheel" aria-label="Steering wheel"><div class="wrot"><svg viewBox="-100 -100 200 200">
+      <circle class="w-rim" r="80"/><circle class="w-edge" r="88.5"/><circle class="w-edge" r="71.5"/>
+      <path class="w-mark" d="M-11.1 -79.2A80 80 0 0 1 11.1 -79.2"/>
+      <g class="w-spk"><path d="M-73 -8L-23 -10Q-20 0 -23 10L-73 8Z"/><path d="M73 -8L23 -10Q20 0 23 10L73 8Z"/><path d="M-9 23Q0 20 9 23L7.5 73L-7.5 73Z"/></g>
+      <g class="w-hole"><circle cx="-57" cy="0" r="3.4"/><circle cx="-41" cy="0" r="3.4"/><circle cx="41" cy="0" r="3.4"/><circle cx="57" cy="0" r="3.4"/><circle cx="0" cy="41" r="3.4"/><circle cx="0" cy="57" r="3.4"/></g>
+      <circle class="w-hub" r="25"/><text class="w-67" y="8">67</text>
+    </svg></div></div>
     <div class="tb" id="t-left" data-touch="left"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></div>
     <div class="tb" id="t-right" data-touch="right"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></div>
     <div class="tb" id="t-gas" data-touch="gas"><span>GAS</span></div>
@@ -371,6 +398,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <button id="p-tod"><span class="label">Time of day</span><b id="p-tod-v">Golden hour</b></button>
         <button id="p-wx"><span class="label">Weather</span><b id="p-wx-v">Clear</b></button>
         <button id="p-tch"><span class="label">Touch controls</span><b id="p-tch-v">Off</b></button>
+        <button id="p-steer"><span class="label">Steering</span><b id="p-steer-v">Wheel</b></button>
         <button id="p-ghost"><span class="label">Ghost of your best</span><b id="p-ghost-v">On</b></button>
         <button id="p-mirror"><span class="label">Rear-view mirror</span><b id="p-mirror-v">On</b></button>
       </div>
