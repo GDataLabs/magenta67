@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
 
 <meta name="theme-color" content="#14213d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,6 +29,7 @@ body { margin: 0; background: var(--ink); color: var(--cream); font-family: var(
 #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 55%, transparent 55%, rgba(20, 20, 40, 0.28) 100%); }
 button { font-family: var(--f-ui); color: inherit; cursor: pointer; }
 button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+button, .iconbtn { touch-action: manipulation; -webkit-touch-callout: none; } /* no double-tap zoom on buttons */
 .label { font-stretch: 118%; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-size: 11px; color: var(--muted); }
 .panel { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 14px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .btn { border: 0; border-radius: 999px; padding: 12px 22px; font-weight: 800; font-stretch: 112%; font-size: 15px; letter-spacing: 0.04em; background: var(--cream); color: var(--ink); transition: transform .12s ease, background .12s ease; }
@@ -115,6 +116,15 @@ body.touch #edrift { top: calc(52px + env(safe-area-inset-top, 0px)); }
 .toast.orb { color: #ffd6ec; border-color: rgba(255,63,168,.6); }
 #nosfx { position: absolute; inset: 0; pointer-events: none; z-index: 5; opacity: 0; background: radial-gradient(ellipse at 50% 55%, rgba(0,0,0,0) 48%, rgba(70,160,255,.34) 80%, rgba(60,110,255,.62) 100%); }
 
+/* rotate-to-landscape hint for phones held upright while driving */
+#rotate { display: none; position: absolute; inset: 0; z-index: 60; place-items: center; text-align: center; background: rgba(20,33,61,.94); padding: 24px; }
+#rotate svg { width: 84px; height: 84px; stroke: var(--cream); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; display: block; margin: 0 auto 14px; animation: rotHint 2.4s ease-in-out infinite; }
+#rotate b { display: block; font-family: var(--f-display); font-weight: 400; font-size: 28px; margin-bottom: 6px; }
+#rotate span { display: block; color: var(--muted); margin-bottom: 18px; }
+@keyframes rotHint { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (max-width: 640px) { body.touch.driving:not(.upright-ok) #rotate { display: grid; } }
+.iconbtn .fs-out { display: none; } body.fs .iconbtn .fs-in { display: none; } body.fs .iconbtn .fs-out { display: inline; }
+
 /* ---------- touch ---------- */
 #touch { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
 #touch .tb { position: absolute; pointer-events: auto; border-radius: 50%; border: 2px solid rgba(255,244,224,.55); background: rgba(20,33,61,.45); display: grid; place-items: center; touch-action: none; }
@@ -133,6 +143,25 @@ body.touch #minimap { left: auto; right: 16px; top: calc(70px + env(safe-area-in
 body.touch #gauges { right: 50%; transform: translateX(50%); bottom: calc(6px + env(safe-area-inset-bottom, 0px)); width: 210px; height: 118px; }
 body.touch #nos { right: 50%; transform: translateX(50%); bottom: calc(126px + env(safe-area-inset-bottom, 0px)); width: 180px; padding: 5px 9px 6px; }
 body.touch #prompt { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+/* phones on their side: keep the middle of the screen clear for the car (NOS bottle moves up top, gauges shrink) */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.touch #nos { top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; width: 190px; padding: 4px 9px 5px; }
+  body.touch #nos .ns { display: none; }
+  body.touch #energy { top: calc(46px + env(safe-area-inset-top, 0px)); }
+  body.touch #chip, body.touch #edrift { top: calc(46px + env(safe-area-inset-top, 0px)); }
+  body.touch.orb-on #edrift { top: calc(80px + env(safe-area-inset-top, 0px)); }
+  body.touch #gauges { width: 186px; height: 104px; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); }
+  body.touch #prompt { bottom: calc(112px + env(safe-area-inset-bottom, 0px)); }
+  body.touch #toasts { top: calc(84px + env(safe-area-inset-top, 0px)); }
+}
+/* held upright (if they chose to): gauges sit above the pedals, NOS under the place sign */
+@media (orientation: portrait) and (max-width: 640px) {
+  body.touch #gauges { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; transform: none; width: 186px; height: 104px; bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  body.touch #nos { left: 16px; right: auto; transform: none; top: calc(84px + env(safe-area-inset-top, 0px)); bottom: auto; width: 170px; }
+  body.touch #nos .ns { display: none; }
+  body.touch #energy { top: calc(122px + env(safe-area-inset-top, 0px)); }
+  body.touch #edrift { top: calc(158px + env(safe-area-inset-top, 0px)); }
+}
 
 
 /* ---------- toasts, drift chip, mirror, replay ---------- */
@@ -206,6 +235,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
   <div id="hud" hidden>
     <div id="place" class="panel"><div class="label" id="place-sub">Seaside town</div><div class="n" id="place-name">Bayview</div></div>
     <div id="topbtns">
+      <button class="iconbtn" id="b-fs" aria-label="Full screen" hidden><svg viewBox="0 0 24 24"><path class="fs-in" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="fs-out" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
       <button class="iconbtn" id="b-cam" aria-label="Change camera"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="iconbtn" id="b-pause" aria-label="Pause menu"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
     </div>
@@ -226,6 +256,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
     <div id="nos" class="panel empty"><div class="nl">NOS</div><div class="bar"><i id="nos-fill"></i></div><div class="ns" id="nos-st">Charge above 100 mph</div></div>
   </div>
   <div id="nosfx"></div>
+  <div id="rotate"><div><svg viewBox="0 0 64 64"><rect x="20" y="8" width="24" height="42" rx="4"/><path d="M28 44h8"/><path d="M50 30a20 20 0 0 1-6 18m0 0v-7m0 7h-7"/></svg><b>Turn your phone sideways</b><span>Magenta '67 plays best in landscape</span><button class="btn small ghost" id="rot-ok">Keep playing upright</button></div></div>
   <div id="orbfx"></div>
   <div id="mirror" hidden></div>
   <div id="replay" class="panel" hidden><div class="rl">Replay</div><div class="bar"><i id="rp-fill"></i></div><button class="btn small" id="rp-skip">Skip</button></div>
@@ -300,6 +331,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
         <button id="p-music"><span class="label">Music</span><b id="p-music-v">On</b></button>
         <button id="p-turbo"><span class="label">Turbo sound</span><b id="p-turbo-v">On</b></button>
+        <button id="p-fs"><span class="label">Full screen</span><b id="p-fs-v">Off</b></button>
         <button id="p-gfx"><span class="label">Graphics</span><b id="p-gfx-v">High</b></button>
         <button id="p-tod"><span class="label">Time of day</span><b id="p-tod-v">Golden hour</b></button>
         <button id="p-wx"><span class="label">Weather</span><b id="p-wx-v">Clear</b></button>

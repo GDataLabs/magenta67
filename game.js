@@ -6044,6 +6044,20 @@ const Input = {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
+    this.noZoom();
+  },
+  // Phones: no zooming. Pinch (two thumbs on the pedals at once looks like one), double-tap and Safari's gesture zoom
+  // are all blocked on the game; the menus still scroll.
+  noZoom() {
+    let m = document.querySelector('meta[name=viewport]');
+    if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+    m.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+    const stop = (e) => e.preventDefault(), inMenu = (e) => e.target && e.target.closest && e.target.closest('.card');
+    for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, stop, { passive: false });
+    document.addEventListener('touchstart', (e) => { if (e.touches.length > 1 && !inMenu(e)) e.preventDefault(); }, { passive: false });
+    document.addEventListener('touchmove', (e) => { if (!inMenu(e) || e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    let lastEnd = 0;
+    document.addEventListener('touchend', (e) => { const now = performance.now(), quick = now - lastEnd < 380; lastEnd = now; if (quick && !inMenu(e) && !(e.target.closest && e.target.closest('button'))) e.preventDefault(); }, { passive: false });
   },
   bindTouch(root) {
     const bind = (el, on, off) => {
@@ -6915,7 +6929,7 @@ const UI = {
     this.game = game;
     this.mm = $('minimap').getContext('2d');
     this.gg = $('gauges').getContext('2d');
-    $('b-start').onclick = () => game.startDriving();
+    $('b-start').onclick = () => { if (document.body.classList.contains('touch')) Fullscreen.auto(this); game.startDriving(); };
     $('b-howto').onclick = () => { $('howto').hidden = !$('howto').hidden; };
     $('b-pause').onclick = () => game.togglePause();
     $('b-cam').onclick = () => game.cycleCamera();
@@ -6947,6 +6961,8 @@ const UI = {
     $('p-mirror').onclick = () => { Mirror.setOn(!Mirror.on); this.syncToggles(); };
     Input.bindTouch($('touch'));
     if (matchMedia('(pointer: coarse)').matches) this.setTouch(true);
+    Fullscreen.init(this);
+    $('rot-ok').onclick = () => document.body.classList.add('upright-ok');
     this.buildRaceList();
   },
   setTouch(on) { document.body.classList.toggle('touch', on); $('touch').hidden = !on || !this.game.driving; Input.usingTouch = on; },
@@ -6960,6 +6976,7 @@ const UI = {
     $('p-tod-v').textContent = LIGHTING[g.env.preset].label;
     $('p-wx-v').textContent = WEATHER[g.env.wx].label;
     $('p-tch-v').textContent = document.body.classList.contains('touch') ? 'On' : 'Off';
+    $('p-fs-v').textContent = Fullscreen.is() || Fullscreen.standalone() ? 'On' : 'Off';
     $('p-ghost-v').textContent = Ghost.on ? 'On' : 'Off';
     $('p-mirror-v').textContent = Mirror.on ? 'On' : 'Off';
     const inRace = Race.state !== 'free';
@@ -7244,6 +7261,40 @@ const Mirror = {
 };
 
 // ============================================================
+//  Full screen. Android and desktop: the Fullscreen API (and landscape lock on phones), entered automatically
+//  when you start driving on a touch screen, and from the button by the camera button or the pause menu.
+//  iPhone Safari has no full screen for pages, so there the button explains Add to Home Screen, which opens
+//  the game as a full-screen app (manifest + apple-mobile-web-app-capable in the web build).
+// ============================================================
+const Fullscreen = {
+  el: document.documentElement,
+  can() { const d = document; return !!((d.fullscreenEnabled || d.webkitFullscreenEnabled) && (this.el.requestFullscreen || this.el.webkitRequestFullscreen)); },
+  is() { return !!(document.fullscreenElement || document.webkitFullscreenElement); },
+  standalone() { return !!(navigator.standalone || matchMedia('(display-mode: standalone)').matches || (matchMedia('(display-mode: fullscreen)').matches && !this.is())); }, // launched from the home screen
+  ios() { return /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); },
+  async enter() {
+    try { await (this.el.requestFullscreen ? this.el.requestFullscreen({ navigationUI: 'hide' }) : this.el.webkitRequestFullscreen()); } catch (e) { return false; }
+    if (document.body.classList.contains('touch')) { try { await screen.orientation.lock('landscape'); } catch (e) { } }
+    return true;
+  },
+  exit() { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) { } },
+  tip(ui) { ui.toast(this.ios() ? 'Full screen on iPhone: tap <b>Share</b> then <b>Add to Home Screen</b>, and play from the icon' : 'Full screen isn\'t available in this view', 'wx'); },
+  toggle(ui) { if (this.is()) this.exit(); else if (this.can()) this.enter(); else if (!this.standalone()) this.tip(ui); },
+  auto(ui) { // on Start driving (a tap, so the browser allows it)
+    if (this.standalone() || this.is()) return;
+    if (this.can()) this.enter();
+    else if (this.ios() && !store.get('fs-tip', false)) { store.set('fs-tip', true); setTimeout(() => this.tip(ui), 2500); }
+  },
+  init(ui) {
+    const btn = $('b-fs'), sync = () => { document.body.classList.toggle('fs', this.is()); btn.hidden = this.standalone() || (!this.can() && !document.body.classList.contains('touch')); if (ui.game) ui.syncToggles(); };
+    btn.onclick = () => this.toggle(ui);
+    $('p-fs').onclick = () => this.toggle(ui);
+    document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync);
+    sync();
+  },
+};
+
+// ============================================================
 //  Game bootstrap & loop
 // ============================================================
 const CAM_MODES = [
@@ -7318,7 +7369,7 @@ const Game = {
   startDriving(keepPos) {
     Sound.init(); if (Race.state === 'free') Sound.music('title');
     if (!keepPos) { const sp = World.spawn; this.player.reset(sp.x, sp.z, sp.heading); this.camYaw = sp.heading; this.snapCam = true; }
-    this.driving = true; stopTitleVideo(); $('title').hidden = true; $('hud').hidden = false;
+    this.driving = true; document.body.classList.add('driving'); stopTitleVideo(); $('title').hidden = true; $('hud').hidden = false;
     $('touch').hidden = !document.body.classList.contains('touch');
     UI.syncToggles();
     UI.showPlace(PLACES[0]); this.currentPlace = PLACES[0];
