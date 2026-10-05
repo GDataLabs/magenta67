@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
-const M67_BUILD = '5b1d3154ae';
+const M67_BUILD = '1d9c4eb573';
 { const m = document.querySelector('meta[name="m67-build"]');
   if (!m || m.content !== M67_BUILD) { let tried = false; try { tried = sessionStorage.getItem('m67-fresh') === M67_BUILD; sessionStorage.setItem('m67-fresh', M67_BUILD); } catch (e) { }
     if (!tried) { location.replace(location.pathname + '?v=' + M67_BUILD + location.hash); throw new Error('Loading the new version of Magenta 67'); } }
@@ -2233,10 +2233,176 @@ function makeEnvMap(renderer, opts = {}) {
 }
 
 // ============================================================
+//  New islands beyond the main island (v13+). The world grid grew from 1.6 km to 3 km square; the main
+//  island is unchanged in the middle (MAIN_HALF), and open sea costs almost nothing to build.
+//
+//  Gator Bayou lies west, across the Bayou Causeway: low marsh round Hollow Hill, a haunted rock dome
+//  with the Emerald Caverns running right through it. (The winter island goes north and the volcano
+//  south-east; their waters are kept clear.)
+// ============================================================
+const MAIN_HALF = 800; // the original island's square: props, flowers and challenges keep to it
+const BAYOU = { x: -1185, z: 50, r: 285 };
+const HOLLOW = { x: -1220, z: 8, r: 132, h: 66 };
+// Emerald Caverns centreline [x, z, floorY]. The first two and last two points are the open-air
+// approaches outside the mouths; points 2 and n-3 are the mouths themselves.
+const CAVE_DEF = {
+  hw: 8.6, flat: 4.8, k: 0.3, // drivable channel: flat floor, then walls curving up to the rim (bobsled-style)
+  pts: [
+    [-1062, 40, 3.0], [-1084, 44, 3.1],
+    [-1104, 48, 3.2],
+    [-1130, 62, 3.0], [-1165, 78, 2.6], [-1205, 86, 2.3], [-1245, 80, 2.2], [-1280, 60, 2.4],
+    [-1296, 28, 2.8], [-1279, 0, 3.0], [-1245, -8, 3.2], [-1210, -4, 3.2], [-1175, -12, 3.0],
+    [-1152, -35, 3.1], [-1165, -62, 3.4], [-1200, -76, 3.8], [-1238, -80, 4.0],
+    [-1262, -94, 4.0],
+    [-1278, -112, 3.8], [-1292, -132, 3.6],
+  ],
+  cavern: [322, 400], // the Great Cavern: the middle pass under the top of the hill opens right out
+};
+
+// ---------- cave centreline (planar, with floor heights) ----------
+let _caveLine = null;
+function caveLine() {
+  if (_caveLine) return _caveLine;
+  const v = CAVE_DEF.pts.map(p => new THREE.Vector3(p[0], p[2], p[1]));
+  const c = new THREE.CatmullRomCurve3(v, false, 'centripetal');
+  const n = Math.round(c.getLength() / 2.5), P = c.getSpacedPoints(n);
+  const S = P.map((q, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(n, i + 1)]; let tx = b.x - a.x, tz = b.z - a.z; const l = Math.hypot(tx, tz) || 1; return { x: q.x, y: q.y, z: q.z, tx: tx / l, tz: tz / l, s: 0 }; });
+  let s = 0; S.forEach((p, i) => { if (i) s += Math.hypot(p.x - S[i - 1].x, p.z - S[i - 1].z); p.s = s; });
+  const near = (pt) => { let b = 0, bd = Infinity; S.forEach((p, i) => { const d = (p.x - pt[0]) ** 2 + (p.z - pt[1]) ** 2; if (d < bd) { bd = d; b = i; } }); return S[b].s; };
+  const N = CAVE_DEF.pts.length;
+  _caveLine = { S, length: s, sE: near(CAVE_DEF.pts[2]), sW: near(CAVE_DEF.pts[N - 3]) };
+  return _caveLine;
+}
+// where the mouths are along the cave deck's own samples
+function caveDeckMouths(d) {
+  if (d._mouths) return d._mouths;
+  const at = (pt) => { let b = d.samples[0], bd = Infinity; for (const q of d.samples) { const dd = (q.x - pt[0]) ** 2 + (q.z - pt[1]) ** 2; if (dd < bd) { bd = dd; b = q; } } return b.s; };
+  const N = CAVE_DEF.pts.length;
+  return (d._mouths = { sE: at(CAVE_DEF.pts[2]), sW: at(CAVE_DEF.pts[N - 3]) });
+}
+// how tall/wide the cave is at s (the Great Cavern opens right out)
+function caveSize(s) {
+  const [a, b] = CAVE_DEF.cavern, big = smooth(a - 30, a + 10, s) * (1 - smooth(b - 10, b + 30, s));
+  return { hw: lerp(10.5, 24, big), top: lerp(12.5, 26, big), big };
+}
+// ---------- terrain over the cave: the hill must cover the tunnel everywhere except at the mouths ----------
+let _cover = null;
+function caveCoverGrid() {
+  if (_cover) return _cover;
+  const L = caveLine(), S = L.S, cs = 2.5;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of S) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  x0 -= 40; z0 -= 40; x1 += 40; z1 += 40;
+  const nx = Math.ceil((x1 - x0) / cs) + 1, nz = Math.ceil((z1 - z0) / cs) + 1, G = new Float32Array(nx * nz).fill(-1e9);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const x = x0 + i * cs, z = z0 + j * cs; let want = -1e9;
+    for (const p of S) {
+      if (p.s < L.sE + 9 || p.s > L.sW - 9) continue; // the mouths stay open (terrain holes + rock portals there)
+      const d = Math.hypot(x - p.x, z - p.z), C = caveSize(p.s), r = C.hw + 7;
+      if (d > r + 14) continue;
+      const need = p.y + C.top + 4.5 - smooth(r, r + 14, d) * 20;
+      if (need > want) want = need;
+    }
+    G[j * nx + i] = want;
+  }
+  _cover = { G, x0, z0, cs, nx, nz };
+  return _cover;
+}
+function caveCover(x, z) {
+  const C = caveCoverGrid(), fi = (x - C.x0) / C.cs, fj = (z - C.z0) / C.cs;
+  if (fi < 0 || fj < 0 || fi >= C.nx - 1 || fj >= C.nz - 1) return -1e9;
+  const i = Math.floor(fi), j = Math.floor(fj), u = fi - i, v = fj - j, G = C.G, n = C.nx;
+  return lerp(lerp(G[j * n + i], G[j * n + i + 1], u), lerp(G[(j + 1) * n + i], G[(j + 1) * n + i + 1], u), v);
+}
+// terrain holes where the tunnel meets the hillside (a heightfield can't overhang; rock portals cover these)
+function caveHoles() {
+  const L = caveLine(), out = [];
+  for (const [s, dir] of [[L.sE, 1], [L.sW, -1]]) {
+    const p = L.S.reduce((b, q) => Math.abs(q.s - (s + dir * 4)) < Math.abs(b.s - (s + dir * 4)) ? q : b, L.S[0]);
+    out.push({ x: p.x, z: p.z, tx: p.tx, tz: p.tz, hl: 8, hw: caveSize(s).hw + 2.5 }); // from 4 m outside the mouth to 12 m in
+  }
+  return out;
+}
+function inCaveHole(x, z) {
+  for (const h of World.holes || []) {
+    const dx = x - h.x, dz = z - h.z, a = dx * h.tx + dz * h.tz, l = dx * -h.tz + dz * h.tx;
+    if (Math.abs(a) < h.hl && Math.abs(l) < h.hw) return true;
+  }
+  return false;
+}
+
+// ---------- distance culling: terrain chunks past the fog are invisible anyway, so don't draw them ----------
+const Zones = {
+  t: 0,
+  update(dt, game) {
+    if ((this.t -= dt) > 0) return; this.t = 0.25;
+    const c = game.camera.position, far = game.env.scene.fog.far * 1.03 + 60;
+    for (const m of World.chunks) { const b = m.geometry.boundingSphere; m.visible = Math.hypot(b.center.x - c.x, b.center.y - c.y, b.center.z - c.z) - b.radius < far; }
+  },
+};
+
+// ---------- island shapes ----------
+function isleNear(x, z) { return Math.hypot(x - BAYOU.x, z - BAYOU.z) < BAYOU.r + 70; }
+function isleParams(x, z) {
+  if (!isleNear(x, z)) return { any: false, bayou: 0 };
+  const dB = Math.hypot(x - BAYOU.x, z - BAYOU.z) + 42 * Noise.fbm(x / 210 - 3, z / 210 + 7, 3);
+  const bayou = smooth(BAYOU.r + 22, BAYOU.r - 40, dB);
+  return { any: bayou > 0, bayou };
+}
+function hollowHill(x, z) {
+  const dH = Math.hypot(x - HOLLOW.x, z - HOLLOW.z) + 11 * Noise.fbm(x / 60 + 4, z / 60 - 2, 3);
+  if (dH > HOLLOW.r + 6) return 0;
+  const cliff = 30 * smooth(HOLLOW.r, HOLLOW.r - 26, dH);
+  const dome = 38 * Math.pow(smooth(HOLLOW.r - 18, 0, dH), 1.25);
+  const crag = 10 * Math.pow(1 - Math.abs(Noise.fbm(x / 38 + 9, z / 38, 3)), 2.2) * smooth(HOLLOW.r, HOLLOW.r - 36, dH);
+  return cliff + dome + crag;
+}
+// marsh: low, lumpy and wet, with black pools between the hummocks (kept away from the roads)
+function bayouHeight(x, z, dRoad) {
+  let h = 1.8 + 1.1 * Noise.fbm(x / 110 + 2, z / 110, 3) + 0.45 * Noise.fbm(x / 24, z / 24 + 6, 2);
+  const pool = Noise.fbm(x / 64 + 40, z / 64 - 12, 3);
+  h = lerp(h, -0.9, smooth(0.16, 0.34, pool) * smooth(9, 28, dRoad));
+  const hill = hollowHill(x, z);
+  if (hill > 0) h = Math.max(h, h * 0.4 + hill);
+  const cov = caveCover(x, z); if (cov > h) h = cov;
+  return h;
+}
+// main island (and Gull Rock, the sea stacks) — anything else is open sea
+function mainNear(x, z) {
+  if (Math.hypot(x, z) < 830) return true;
+  if (Math.hypot(x - GULL.x, z - GULL.z) < GULL.r + 40) return true;
+  for (const s of SEA_STACKS) if (Math.hypot(x - s[0], z - s[1]) < s[2] + 10) return true;
+  return false;
+}
+function seaFloor(x, z) { return -9 + 2 * Noise.simplex(x / 90, z / 90); }
+
+// ---------- colours ----------
+const ISLE_PAL = {
+  marshA: new THREE.Color(0x5f6d3a), marshB: new THREE.Color(0x4c5a31), marshC: new THREE.Color(0x77753f), mud: new THREE.Color(0x5e4e36),
+  rockA: new THREE.Color(0x5d5765), rockB: new THREE.Color(0x48444f), moss: new THREE.Color(0x4f6a39), bone: new THREE.Color(0x9a9478),
+};
+function isleColor(x, z, h, slope, dRoad, w, out) {
+  const n1 = Noise.simplex(x / 30 + 7, z / 30), n2 = Noise.simplex(x / 8 - 20, z / 8);
+  const c = ISLE_PAL.marshA.clone().lerp(ISLE_PAL.marshB, 0.5 + 0.5 * n1).lerp(ISLE_PAL.marshC, Math.max(0, n2) * 0.3);
+  if (h < 1.6) c.lerp(ISLE_PAL.mud, smooth(1.6, 0.6, h));
+  const hill = hollowHill(x, z);
+  if (hill > 3) { // Hollow Hill: dark rock, moss on the gentler bits
+    const rk = ISLE_PAL.rockA.clone().lerp(ISLE_PAL.rockB, 0.5 + 0.5 * n2);
+    rk.lerp(ISLE_PAL.moss, (1 - smooth(0.45, 0.9, slope)) * 0.55 * (0.5 + 0.5 * n1));
+    c.lerp(rk, smooth(3, 10, hill));
+  }
+  if (h < 0.3 && h > -0.5) c.lerp(ISLE_PAL.mud, 0.6);
+  if (h < -0.45) c.copy(ISLE_PAL.mud).lerp(PAL.seabed, smooth(-0.6, -6, h));
+  if (dRoad < 8.5) c.lerp(ISLE_PAL.mud.clone().lerp(PAL.dirt, 0.4), smooth(8.5, 5.5, dRoad) * 0.7);
+  out.lerp(c, w);
+  return out;
+}
+
+// ============================================================
 //  World: island terrain, biomes, roads, water, props
 //  x = east, z = south, y = up. North is -z.
 // ============================================================
-const W = { half: 800, cell: 5, n: 321, sea: 0, lake: { x: -235, z: -440, r: 72, level: 31 } };
+const W = { half: 1500, cell: 5, n: 601, sea: 0, lake: { x: -235, z: -440, r: 72, level: 31 } };
 
 const ROAD_DEFS = [
   { id: 'coast', name: 'Coast Highway', halfW: 4.6, closed: true, pts: [
@@ -2253,6 +2419,10 @@ const ROAD_DEFS = [
     [-60, 420], [40, 365], [140, 300], [240, 238], [330, 168], [392, 75], [372, -28], [432, -118], [512, -186], [588, -230]] },
   { id: 'farm', name: 'Windmill Lane', halfW: 4.0, pts: [[-140, 110], [-250, 86], [-380, 66], [-500, 26], [-638, 0]] },
   { id: 'light', name: 'Lighthouse Road', halfW: 4.0, pts: [[-350, 410], [-405, 438], [-452, 466]] },
+  // Gator Bayou (west island): the causeway road off the Coast Highway, then round Hollow Hill to the cave mouths
+  { id: 'causeway', name: 'Bayou Causeway', halfW: 4.4, pts: [[-641, 3], [-672, 5], [-704, 8]] },
+  { id: 'bayou', name: 'Bayou Road', halfW: 4.2, pts: [[-904, 30], [-935, 34], [-975, 40], [-1015, 41], [-1045, 39], [-1062, 40]] },
+  { id: 'bayou2', name: 'Graveyard Lane', halfW: 4.2, pts: [[-1292, -132], [-1290, -165], [-1250, -192], [-1180, -205], [-1105, -180], [-1040, -125], [-995, -60], [-975, -5], [-975, 40]] },
   { id: 'islet', name: 'Gull Rock Loop', halfW: 4.2, closed: true, fixedY: 30.2, pts: Array.from({ length: 12 }, (_, k) => [700 + Math.cos(k / 12 * Math.PI * 2) * 37, 690 + Math.sin(k / 12 * Math.PI * 2) * 37]) },
 ];
 
@@ -2269,6 +2439,9 @@ const PLACES = [
   { name: 'Gull Rock', sub: 'Island fort', x: 700, z: 690, r: 90 },
   { name: 'Spiral Jump', sub: 'Stunt park', x: 60, z: 190, r: 60 },
   { name: 'Cape Magenta', sub: 'Launch complex', x: -360, z: 10, r: 95 },
+  { name: 'Gator Bayou', sub: 'Haunted marsh', x: -1150, z: 60, r: 300 },
+  { name: 'Hollow Hill', sub: 'Gator Bayou', x: -1220, z: 8, r: 150 },
+  { name: 'Bayou Causeway', sub: 'To Gator Bayou', x: -800, z: 18, r: 110 },
   // up in the sky (matched only when you're up there; `deck` places win when you're on that deck)
   { name: 'Sky Highway', sub: 'Above the clouds', x: -60, z: -520, r: 420, sky: true },
   { name: 'Launch Rail', sub: 'Cape Magenta', x: -334, z: -180, r: 250, sky: true, deck: 'launch' },
@@ -2302,7 +2475,7 @@ function biomeAt(x, z) {
   return { wD, wA, wM };
 }
 
-function rawHeight(x, z, dRoad) {
+function mainHeight(x, z, dRoad) {
   const ip = islandParams(x, z);
   const b = biomeAt(x, z);
   // meadow / coast
@@ -2343,6 +2516,14 @@ function rawHeight(x, z, dRoad) {
   h = lerp(sea, h, ip.land);
   return h;
 }
+// the whole world: the main island, the new islands round it, open sea everywhere else (cheap)
+function rawHeight(x, z, dRoad) {
+  const nm = mainNear(x, z), isle = isleParams(x, z);
+  if (!nm && !isle.any) return seaFloor(x, z);
+  let h = nm ? mainHeight(x, z, dRoad) : seaFloor(x, z);
+  if (isle.bayou > 0) h = lerp(h, bayouHeight(x, z, dRoad), isle.bayou);
+  return h;
+}
 
 // ---------- Roads ----------
 function sampleRoad(def) {
@@ -2368,7 +2549,7 @@ function sampleRoad(def) {
 function buildRoadIndex(roads) {
   const cs = 25, map = new Map();
   roads.forEach((r, ri) => r.samples.forEach((p, i) => {
-    const k = Math.floor(p.x / cs) + ',' + Math.floor(p.z / cs);
+    const k = Math.floor(p.x / cs) * 100003 + Math.floor(p.z / cs);
     let a = map.get(k); if (!a) { a = []; map.set(k, a); } a.push(ri, i);
   }));
   return {
@@ -2378,7 +2559,7 @@ function buildRoadIndex(roads) {
       const cx = Math.floor(x / cs), cz = Math.floor(z / cs);
       let best = null, bd = maxD * maxD;
       for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
-        const a = map.get((cx + dx) + ',' + (cz + dz)); if (!a) continue;
+        const a = map.get((cx + dx) * 100003 + (cz + dz)); if (!a) continue;
         for (let k = 0; k < a.length; k += 2) {
           const ri = a[k]; if (ri === exclude || ri >= onlyBelow) continue;
           const p = roads[ri].samples[a[k + 1]];
@@ -2406,9 +2587,15 @@ function buildWorld(scene, quality) {
   // 2. distance-to-road grid & raw heights
   const dist = new Float32Array(N * N);
   const raw = new Float32Array(N * N);
+  // coarse mask of 25 m cells within 125 m of any road: everything else skips the nearest-road search
+  const MC = 25, MN = Math.ceil(2 * half / MC) + 2, near = new Uint8Array(MN * MN);
+  for (const r of roads) for (const p of r.samples) {
+    const ci = Math.floor((p.x + half) / MC), cj = Math.floor((p.z + half) / MC);
+    for (let dj = -6; dj <= 6; dj++) for (let di = -6; di <= 6; di++) { const ii = ci + di, jj = cj + dj; if (ii >= 0 && jj >= 0 && ii < MN && jj < MN) near[jj * MN + ii] = 1; }
+  }
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const x = -half + i * cell, z = -half + j * cell;
-    const nr = rIndex.nearest(x, z, 125);
+    const nr = near[Math.floor((z + half) / MC) * MN + Math.floor((x + half) / MC)] ? rIndex.nearest(x, z, 125) : null;
     const d = nr ? nr.d : 125;
     dist[j * N + i] = d;
     raw[j * N + i] = rawHeight(x, z, Math.min(d, deckDist[j * N + i]));
@@ -2497,7 +2684,7 @@ function buildWorld(scene, quality) {
   roads.forEach(r => r.samples.forEach(p => { p.y = groundHeight(p.x, p.z); }));
 
   // 6. road mask grid (2.5m) for surface queries
-  const RM = 640, rmCell = 2.5;
+  const rmCell = 2.5, RM = Math.ceil(2 * half / rmCell);
   const roadMask = new Uint8Array(RM * RM);
   roads.forEach((r, ri) => r.samples.forEach(p => {
     const rr = r.halfW + 0.3; const cr = Math.ceil(rr / rmCell);
@@ -2511,6 +2698,7 @@ function buildWorld(scene, quality) {
   World.roadMask = roadMask; World.RM = RM; World.rmCell = rmCell;
 
   console.log('terrain', (performance.now() - t0).toFixed(0), 'ms');
+  World.holes = caveHoles();
   buildTerrainMesh(scene, H, dist);
   buildRoadMeshes(scene);
   buildWater(scene);
@@ -2610,6 +2798,7 @@ function terrainColor(x, z, h, slope, dRoad, out) {
   if (dL < L.r + 10 && h < L.level + 1.2) c.lerp(PAL.wetSand, 0.6);
   // road shoulders (dirt)
   if (dRoad < 8.5) c.lerp(PAL.dirt.clone().lerp(PAL.sand, b.wD * 0.5), smooth(8.5, 5.5, dRoad) * 0.75);
+  const isle = isleParams(x, z); if (isle.bayou > 0) isleColor(x, z, h, slope, dRoad, isle.bayou, c);
   return c;
 }
 
@@ -2627,9 +2816,11 @@ function buildTerrainMesh(scene, H, dist) {
   }
   World.terrainColors = colors;
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const CH = 8, per = (N - 1) / CH;
+  const per = 40, CH = (N - 1) / per; // 200 m chunks
   for (let cj = 0; cj < CH; cj++) for (let ci = 0; ci < CH; ci++) {
     const vn = per + 1;
+    let hmax = -Infinity; for (let j = 0; j < vn; j++) for (let i = 0; i < vn; i++) { const v = H[(cj * per + j) * N + ci * per + i]; if (v > hmax) hmax = v; }
+    if (hmax < -3.5) continue; // open sea: the sea bed plane covers it
     const pos = new Float32Array(vn * vn * 3), cl = new Float32Array(vn * vn * 3), idx = [];
     for (let j = 0; j < vn; j++) for (let i = 0; i < vn; i++) {
       const gi = ci * per + i, gj = cj * per + j, k = gj * N + gi, o = (j * vn + i) * 3;
@@ -2638,6 +2829,7 @@ function buildTerrainMesh(scene, H, dist) {
     }
     for (let j = 0; j < per; j++) for (let i = 0; i < per; i++) {
       const a = j * vn + i, b = a + 1, c = a + vn, d = c + 1;
+      if (World.holes && World.holes.length && inCaveHole(-half + (ci * per + i + 0.5) * cell, -half + (cj * per + j + 0.5) * cell)) continue;
       idx.push(a, c, b, b, c, d);
     }
     const g = new THREE.BufferGeometry();
@@ -2778,7 +2970,7 @@ function buildProps(scene, quality, dist) {
   const pads = roadsidePads();
   const dens = quality === 'high' ? 1 : 0.7;
   const step = 7;
-  for (let z = -W.half + 4; z < W.half - 4; z += step) for (let x = -W.half + 4; x < W.half - 4; x += step) {
+  for (let z = -MAIN_HALF + 4; z < MAIN_HALF - 4; z += step) for (let x = -MAIN_HALF + 4; x < MAIN_HALF - 4; x += step) {
     const px = x + (rng() - 0.5) * step, pz = z + (rng() - 0.5) * step;
     const h = groundHeight(px, pz);
     if (h < 1.2) continue;
@@ -3066,7 +3258,7 @@ function buildLandmarks(scene) {
 
 // ---------- Minimap base image ----------
 function buildMinimapImage() {
-  const S = 512, c = document.createElement('canvas'); c.width = S; c.height = S;
+  const S = 960, c = document.createElement('canvas'); c.width = S; c.height = S;
   const ctx = c.getContext('2d'); const img = ctx.createImageData(S, S);
   const N = W.n, col = World.terrainColors;
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -3075,7 +3267,7 @@ function buildMinimapImage() {
     const k = j * N + i; const h = World.H[k];
     let r = col[k * 3], g = col[k * 3 + 1], b = col[k * 3 + 2];
     const L = W.lake;
-    if (h < 0 || (Math.hypot(wx - L.x, wz - L.z) < L.r + 4 && h < L.level)) { r = 0.33; g = 0.68; b = 0.78; }
+    if (h < 0 || (Math.hypot(wx - L.x, wz - L.z) < L.r + 4 && h < L.level)) { r = 0.33; g = 0.68; b = 0.78; if (Math.hypot(wx - BAYOU.x, wz - BAYOU.z) < BAYOU.r + 20) { r = 0.16; g = 0.24; b = 0.15; } } // (bayou pools: black water)
     // hill shading
     const hx = World.H[k + (i < N - 1 ? 1 : 0)] - World.H[k - (i > 0 ? 1 : 0)];
     const sh = clamp(1 - hx * 0.04, 0.75, 1.2);
@@ -3190,6 +3382,18 @@ function deckLayout() {
       ease: [0, 3, 1.5], // heights between points 0 and 3: steep at the top, flattening out (follows the fall)
     });
   }
+  // 4) Bayou Causeway: a low concrete viaduct over the strait to Gator Bayou (the west island)
+  defs.push({
+    id: 'bayoucauseway', name: 'Bayou Causeway', halfW: 5.0, style: 'viaduct',
+    pts: [[-704, 8, 'road'], [-726, 10, 'road+0.4'], [-760, 14, 6.5], [-800, 19, 7.4], [-842, 24, 6.8], [-878, 28, 'road+0.4'], [-904, 30, 'road']],
+  });
+  // 5) Emerald Caverns: an underground deck right through Hollow Hill (37_cave.js builds the cave round it).
+  //    'under' decks win over the hill above them whenever you're down at their level.
+  defs.push({
+    id: 'caverns', name: 'Emerald Caverns', halfW: CAVE_DEF.hw, style: 'cave', under: true, cave: true, surf: 'road',
+    pts: CAVE_DEF.pts.map((p, i, a) => [p[0], p[1], i === 0 || i === a.length - 1 ? 'road' : p[2]]),
+    channel: { flat: CAVE_DEF.flat, k: CAVE_DEF.k, rampIn: 22, rampOut: 22 },
+  });
   return defs.concat(skyDeckDefs()); // Sky Highway, Moon bridge/track and re-entry chute (34_sky.js)
 }
 
@@ -3242,7 +3446,7 @@ function buildDeckSamples(defs) {
       if (def.lip) for (const p of S) p.bk *= smooth(0, 20, s - p.s); // kickers stay level
     }
     const boostS = def.boost ? def.boost.map(([a, b, acc]) => { const f = (v) => v < 0 ? s + v : v <= 1 ? v * s : v; return [f(a), f(b), acc]; }) : null;
-    if (def.channel && def.channel.rampIn) for (const p of S) p.cw = smooth(0, def.channel.rampIn, p.s); // walls grow in from a flat entry
+    if (def.channel && def.channel.rampIn) for (const p of S) p.cw = smooth(0, def.channel.rampIn, p.s) * (def.channel.rampOut ? smooth(s, s - def.channel.rampOut, p.s) : 1); // walls grow in from a flat entry (and out again)
     return { ...def, samples: S, length: s, deck: true, boostS };
   });
   // spatial grid of segments
@@ -3294,8 +3498,10 @@ function surfaceHeight(x, z, yRef) {
   if (yRef === undefined) return g;
   const m = moonGround(x, z, yRef); if (m > g) g = m;
   const d = deckAt(x, z, yRef);
-  return d && d.y > g ? d.y : g;
+  return d && (d.y > g || underDeck(d, yRef)) ? d.y : g;
 }
+// down at the level of an underground deck (the cave), the hill overhead doesn't count
+function underDeck(d, yRef) { return d.deck.under && yRef - d.y < 4; }
 
 // --- terrain interplay ---------------------------------------------------
 // Snap deck ends marked 'road' onto the centreline of the road they join, and remember the join
@@ -3312,7 +3518,7 @@ function snapDeckEnds(defs) {
 // planar distance from every terrain grid vertex to the nearest deck centreline (capped), for mesa/peak suppression
 function deckDistanceGrid(defs, maxD = 60) {
   const N = W.n, cell = W.cell, half = W.half, out = new Float32Array(N * N).fill(maxD), R = Math.ceil(maxD / cell);
-  for (const d of defs) if (!d.sky) for (const p of deckPathXZ(d)) {
+  for (const d of defs) if (!d.sky && !d.under) for (const p of deckPathXZ(d)) {
     const ci = Math.round((p.x + half) / cell), cj = Math.round((p.z + half) / cell);
     for (let jj = Math.max(0, cj - R); jj <= Math.min(N - 1, cj + R); jj++) for (let ii = Math.max(0, ci - R); ii <= Math.min(N - 1, ci + R); ii++) {
       const dd = Math.hypot(-half + ii * cell - p.x, -half + jj * cell - p.z), k = jj * N + ii; if (dd < out[k]) out[k] = dd;
@@ -3324,9 +3530,10 @@ function deckDistanceGrid(defs, maxD = 60) {
 function applyDeckTerrain(H, roadDist) {
   const N = W.n, cell = W.cell, half = W.half;
   for (const d of Decks.list) {
-    const S = d.samples, reach = d.halfW + 8;
+    const S = d.samples, reach = d.halfW + 8, M = d.under ? caveDeckMouths(d) : null;
     for (let i = 0; i < S.length; i++) {
       const p = S[i];
+      if (M && p.s > M.sE + 1 && p.s < M.sW - 1) continue; // underground: leave the hill alone (only the open approaches are cut)
       const i0 = Math.floor((p.x - reach + half) / cell), i1 = Math.ceil((p.x + reach + half) / cell);
       const j0 = Math.floor((p.z - reach + half) / cell), j1 = Math.ceil((p.z + reach + half) / cell);
       for (let jj = Math.max(0, j0); jj <= Math.min(N - 1, j1); jj++) for (let ii = Math.max(0, i0); ii <= Math.min(N - 1, i1); ii++) {
@@ -3391,6 +3598,7 @@ function buildDeckMeshes(scene) {
   World.deckLamps = [];
   for (const d of Decks.list) {
     if (d.sky) { buildSkyDeck(scene, d); continue; } // launch rail, cloud road, moon bridge/track, chute (34_sky.js)
+    if (d.cave) { Cave.build(scene, d); continue; } // Emerald Caverns (37_cave.js)
     const S = d.samples, n = S.length, hw = d.halfW;
     // road surface
     const pos = [], uv = [], idx = [];
@@ -3579,6 +3787,7 @@ function drawDecksOnMinimap(ctx, toPx) {
   for (const pass of [0, 1]) for (const d of Decks.list) {
     ctx.beginPath(); d.samples.forEach((p, i) => i ? ctx.lineTo(toPx(p.x), toPx(p.z)) : ctx.moveTo(toPx(p.x), toPx(p.z)));
     if (d.sky) { ctx.setLineDash(pass ? [5, 3] : []); ctx.strokeStyle = pass ? '#9fe8ff' : 'rgba(20,33,61,0.35)'; ctx.lineWidth = pass ? 1.8 : 3.6; }
+    else if (d.cave) { ctx.setLineDash(pass ? [4, 3] : []); ctx.strokeStyle = pass ? '#5dff9f' : 'rgba(10,20,14,0.7)'; ctx.lineWidth = pass ? 2.2 : 4.6; } // underground: dashed green
     else { ctx.setLineDash([]); ctx.strokeStyle = pass ? '#ffd166' : 'rgba(20,33,61,0.6)'; ctx.lineWidth = pass ? 2.2 : 4.4; }
     ctx.stroke();
   }
@@ -3953,6 +4162,7 @@ function buildScenery(scene) {
       let nx = -tz, nz = tx; const mx = (p0[0] + p1[0]) / 2, mz = (p0[1] + p1[1]) / 2;
       if (groundHeight(mx + nx * 2, mz + nz * 2) > groundHeight(mx - nx * 2, mz - nz * 2)) { nx = -nx; nz = -nz; } // n points out to sea
       const L = W.lake; if (Math.hypot(mx - L.x, mz - L.z) < L.r + 40) continue;
+      if (isleNear(mx, mz) && Math.hypot(mx - BAYOU.x, mz - BAYOU.z) < BAYOU.r - 20) continue; // no surf on the bayou's still pools
       const base = pos.length / 3, w0 = -0.8, w1 = 4.2, ext = 0.6;
       for (const [p, s] of [[p0, -1], [p1, 1]]) for (const w of [w0, w1]) { pos.push(p[0] + nx * w + tx * s * ext, 0.06, p[1] + nz * w + tz * s * ext); uv.push((p[0] + p[1]) * 0.05, w === w0 ? 0 : 1); }
       idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
@@ -3982,7 +4192,7 @@ function buildScenery(scene) {
   {
     const flowers = [], tufts = [];
     for (let k = 0; k < 26000 && (flowers.length < 5200 || tufts.length < 4200); k++) {
-      const x = (rng() - 0.5) * 2 * (W.half - 10), z = (rng() - 0.5) * 2 * (W.half - 10), h = groundHeight(x, z);
+      const x = (rng() - 0.5) * 2 * (MAIN_HALF - 10), z = (rng() - 0.5) * 2 * (MAIN_HALF - 10), h = groundHeight(x, z);
       if (h < 2.5 || h > 60) continue;
       const b = biomeAt(x, z); if (b.wM < 0.6) continue;
       const nr = World.roadIndex.nearest(x, z, 40); const d = nr ? nr.d - World.roads[nr.ri].halfW : 40; if (d < 1.6) continue;
@@ -4854,7 +5064,7 @@ const Atmos = {
     if (!this.ready) return;
     const cam = game.camera, env = game.env, t = game.t;
     // headlights
-    const on = this.headlights;
+    const on = Math.max(this.headlights, this.caveK || 0); // (always on down in the cave)
     const lamp = game.player.form === 'orb' ? 0 : 1; // (kept in the scene so the light count never changes)
     this.heads.forEach(h => { h.intensity = on * 260 * lamp; h.visible = on > 0.02; });
     if (LowMats.tail) { LowMats.tail.emissiveIntensity = 0.2 + on * 0.9; LowMats.lens.emissiveIntensity = 0.1 + on * 1.6; if (LowMats.tailLens) LowMats.tailLens.emissiveIntensity = 0.2 + on * 0.8; }
@@ -4875,6 +5085,642 @@ const Atmos = {
     }
     if (this.flashT > 0) { this.flashT -= dt; const f = this.flashT > 0.3 || (this.flashT > 0.08 && this.flashT < 0.18) ? 1 : 0; env.hemi.intensity = this.baseHemi * (1 + f * 3.5); if (this.flashT <= 0) env.hemi.intensity = this.baseHemi; }
     if (this.beam) this.beam.rotation.y = t * 0.9;
+  },
+};
+
+// ============================================================
+//  Emerald Caverns (v13): a road right through Hollow Hill on Gator Bayou.
+//  The drivable floor is an underground deck (31_decks.js, `under: true`) with bobsled-style walls;
+//  this builds everything round it: the rock tube, the Great Cavern (a rock bridge over a glowing
+//  chasm), green gem clusters that light the walls, stalactites, cobwebs, bones, drifting mist,
+//  bats, the rock portals over the mouths, and the zombies that lurch out at passing cars.
+//  Inside, the light changes: the sun goes, the fog turns black-green, the headlights come on and
+//  the engine echoes. Far from the hill the whole interior is hidden (it can't be seen anyway).
+// ============================================================
+const CAVE_GLOW = new THREE.Color(0x26e07a);
+// merge non-indexed geometries keeping the named attributes (mergeGeos only keeps position/normal/uv/colour)
+function mergeAttrs(geos, names) {
+  const out = new THREE.BufferGeometry(); let count = 0; geos.forEach(g => count += g.attributes.position.count);
+  for (const nm of names) {
+    const sz = geos[0].attributes[nm].itemSize, arr = new Float32Array(count * sz); let o = 0;
+    for (const g of geos) { arr.set(g.attributes[nm].array, o); o += g.attributes[nm].array.length; }
+    out.setAttribute(nm, new THREE.BufferAttribute(arr, sz));
+  }
+  return out;
+}
+const Cave = {
+  deck: null, k: 0, inside: false, zombies: [], t: 0,
+  // ---------- floor height on the deck at lateral l (+ = left of travel) ----------
+  floorDy(p, l) { const d = this.deck, c = d.channel, al = Math.abs(l); return (al > c.flat ? c.k * (al - c.flat) * (al - c.flat) : 0) * (p.cw === undefined ? 1 : p.cw); },
+  // ---------- cross-section ring at a deck sample: [L, Y] pairs from the right rim, over the roof, to the left rim ----------
+  ring(p, s) {
+    const d = this.deck, hw = d.halfW + 0.6, rimY = this.floorDy(p, hw), C = caveSize(s), big = C.big, K = 16, out = [];
+    const mix = (a, b) => [lerp(a[0], b[0], big), lerp(a[1], b[1], big)];
+    // normal tunnel: the wall carries straight on up from the rim into an arch
+    const nW = C.hw, nB = C.top - rimY;
+    // Great Cavern: the road is a rock bridge; the rock drops away into a chasm each side, the walls rise far overhead
+    const cW = C.hw, cY = -19.5, cB = C.top - cY;
+    const side = (sg) => [ // the three points between the rim and the walls (normal | cavern)
+      mix([sg * (hw + 0.35), rimY + 0.15], [sg * (hw + 0.9), rimY - 3.2]),
+      mix([sg * (hw + 0.75), rimY + 0.3], [sg * (hw + 2.4), -15]),
+      mix([sg * (hw + 1.15), rimY + 0.35], [sg * (cW * 0.74), -19.5]),
+    ];
+    out.push([-hw, rimY], ...side(-1));
+    for (let k = 0; k <= K; k++) {
+      const th = k / K * Math.PI;
+      out.push(mix([-nW * Math.cos(th), rimY + 0.4 + nB * Math.sin(th)], [-cW * Math.cos(th), cY + cB * Math.sin(th)]));
+    }
+    out.push(...side(1).reverse(), [hw, rimY]);
+    return out;
+  },
+  // ---------- build ----------
+  build(scene, d) {
+    this.deck = d; this.scene = scene;
+    const M = caveDeckMouths(d); this.sE = M.sE; this.sW = M.sW;
+    const S = d.samples, rng = makeRng(1313);
+    for (const p of S) { const big = caveSize(p.s).big; if (big > 0) p.cw = (p.cw === undefined ? 1 : p.cw) * lerp(1, 0.28, big); } // the Great Cavern: low rocky kerbs, a bridge over the chasm
+    this.inner = new THREE.Group(); this.inner.name = 'caveInner'; scene.add(this.inner);
+    this.outer = new THREE.Group(); this.outer.name = 'caveOuter'; scene.add(this.outer);
+    const i0 = S.findIndex(p => p.s >= this.sE - 2), i1 = S.length - 1 - [...S].reverse().findIndex(p => p.s <= this.sW + 2);
+    this.i0 = i0; this.i1 = i1;
+    // gem clusters first (the walls take their glow from them)
+    this.clusters = this.placeClusters(S, i0, i1, rng);
+    this.buildFloor(S);
+    this.buildTube(S, i0, i1);
+    this.buildGems(rng);
+    this.buildRocks(S, i0, i1, rng);
+    this.buildChasm(S, i0, i1);
+    this.buildDecor(S, i0, i1, rng);
+    this.buildMist(S, i0, i1, rng);
+    this.buildBats(S, rng);
+    this.buildPortals(S, rng);
+    this.buildZombies(S, i0, i1, rng);
+    this.buildBayou(scene, rng);
+    bakeStatic([...this.outer.children], this.outer); // timber, rock and posts: one draw call per material
+    // rim colliders: nothing climbs out over the top of the channel walls
+    for (const sg of [-1, 1]) for (let i = 0; i < S.length - 1; i++) {
+      const p = S[i], q = S[i + 1]; if (p.s < this.sE - 30 || p.s > this.sW + 30) continue;
+      const hw = d.halfW + 0.35, ox = -p.tz * sg * hw, oz = p.tx * sg * hw, dx = q.x - p.x, dz = q.z - p.z, len = Math.hypot(dx, dz);
+      const top = Math.max(p.y, q.y) + this.floorDy(p, hw) * 1.05 + 1.6;
+      World.colliders.add({ type: 'box', x: (p.x + q.x) / 2 + ox, z: (p.z + q.z) / 2 + oz, hx: len / 2 + 0.1, hz: 0.4, rot: Math.atan2(-dz, dx), y0: Math.min(p.y, q.y) - 1, y1: top });
+    }
+    this.ready = true;
+  },
+  // glow material: Lambert with vertex colours plus an emissive term from a per-vertex 'glow' attribute
+  glowMat(opts = {}) {
+    const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: opts.side ?? THREE.FrontSide });
+    m.userData.uGlow = { value: 1 };
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uGlow = m.userData.uGlow; sh.uniforms.uGlowC = { value: CAVE_GLOW };
+      sh.vertexShader = 'attribute float glow; varying float vGlow;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGlow = glow;');
+      sh.fragmentShader = 'uniform float uGlow; uniform vec3 uGlowC; varying float vGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += uGlowC * vGlow * uGlow;');
+    };
+    m.customProgramCacheKey = () => 'caveglow';
+    return m;
+  },
+  glowAt(x, y, z) {
+    let g = 0;
+    for (const c of this.clusters) { const dx = x - c.x, dy = y - c.y, dz = z - c.z, r = c.giant ? 7 : c.big ? 5 : 3.2, d2 = dx * dx + dy * dy + dz * dz; if (d2 < r * r * 6) g += c.k * Math.exp(-d2 / (2 * r * r)); }
+    return Math.min(0.9, g * 0.3);
+  },
+  worldPt(p, L, Y) { return [p.x - p.tz * L, p.y + Y, p.z + p.tx * L]; },
+  // ---------- floor: the deck's channel profile, packed dirt down the middle ----------
+  buildFloor(S) {
+    const d = this.deck, hw = d.halfW + 0.6, nl = 19, pos = [], col = [], glow = [], idx = [], c = new THREE.Color();
+    const dirt = new THREE.Color(0x4b4335), rock = new THREE.Color(0x2f2c35), moss = new THREE.Color(0x2c3a2a);
+    S.forEach((p, i) => {
+      for (let j = 0; j < nl; j++) {
+        const L = -hw + 2 * hw * j / (nl - 1), [x, y, z] = this.worldPt(p, L, this.floorDy(p, L) + 0.03);
+        pos.push(x, y, z);
+        const n = Noise.simplex(x / 5, z / 5), n2 = Noise.simplex(x / 1.7 + 9, z / 1.7);
+        c.copy(rock).lerp(moss, 0.4 + 0.3 * n).lerp(dirt, smooth(d.channel.flat + 0.8, d.channel.flat - 1.2, Math.abs(L)) * (0.75 + 0.2 * n2));
+        const out = p.s < this.sE - 4 || p.s > this.sW + 4; if (out) c.lerp(new THREE.Color(0x5e5240), 0.5); // outside: lit approach
+        col.push(c.r, c.g, c.b); glow.push(out ? 0 : this.glowAt(x, y, z) * 0.6);
+      }
+      if (i) { const a = (i - 1) * nl; for (let j = 0; j < nl - 1; j++) idx.push(a + j, a + nl + j, a + j + 1, a + j + 1, a + nl + j, a + nl + j + 1); }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('glow', new THREE.Float32BufferAttribute(glow, 1));
+    g.setIndex(idx); g.computeVertexNormals();
+    let up = 0; const nr = g.attributes.normal; for (let i = 0; i < nr.count; i += 7) up += nr.getY(i);
+    if (up < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
+    const m = new THREE.Mesh(g, this.floorMat = this.glowMat()); m.receiveShadow = true; m.userData.dynamic = true; this.outer.add(m); // (the approaches show from outside, so it lives in the outer group)
+    // glowing studs down both edges of the dirt track, like cat's eyes (they help in the dark)
+    const studs = []; for (const p of S) { if (p.s < this.sE - 6 || p.s > this.sW + 6) continue; if (Math.round(p.s / 2.5) % 3) continue; for (const sg of [-1, 1]) studs.push(this.worldPt(p, sg * (d.channel.flat + 0.3), this.floorDy(p, d.channel.flat + 0.3) + 0.06)); }
+    const sm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.07, 0.22), new THREE.MeshBasicMaterial({ color: 0x9dffc6 }), studs.length), m4 = new THREE.Matrix4();
+    studs.forEach((q, k) => { m4.makeTranslation(q[0], q[1], q[2]); sm.setMatrixAt(k, m4); }); sm.computeBoundingSphere(); this.inner.add(sm);
+  },
+  // ---------- the rock tube ----------
+  buildTube(S, i0, i1) {
+    const pos = [], col = [], glow = [], idx = [], c = new THREE.Color();
+    const rA = new THREE.Color(0x2b2832), rB = new THREE.Color(0x3d3946), moss = new THREE.Color(0x283826), wet = new THREE.Color(0x1d2a2a);
+    let nring = 0;
+    for (let i = i0; i <= i1; i++) {
+      const p = S[i], R = this.ring(p, p.s), n = R.length, cx = (R[0][0] + R[n - 1][0]) / 2;
+      R.forEach(([L, Y], k) => {
+        const edge = k === 0 || k === n - 1;
+        // rocky lumps: push each ring point out from the tube's middle by a little noise
+        const mid = caveSize(p.s), cyM = lerp(this.floorDy(p, this.deck.halfW) + 0.4, -12, mid.big);
+        let dl = L - cx, dy = Y - cyM; const dl2 = Math.hypot(dl, dy) || 1;
+        const amp = edge ? 0 : (1.1 + 1.8 * mid.big) * (k < 4 || k > n - 5 ? 0.5 : 1) * (Y < -16 ? 0.25 : 1);
+        const nz = amp * Noise.fbm(p.s / 7 + k * 0.37, k * 0.61 + 3, 3);
+        L += dl / dl2 * nz; Y += dy / dl2 * nz;
+        const [x, y, z] = this.worldPt(p, L, Y); pos.push(x, y, z);
+        const hgt = Y - this.floorDy(p, this.deck.halfW);
+        const nn = Noise.simplex(x / 4 + 3, z / 4 + y / 4);
+        c.copy(rA).lerp(rB, 0.5 + 0.5 * nn).lerp(moss, smooth(4, -2, hgt) * 0.5).lerp(wet, Math.max(0, Noise.simplex(p.s / 13, k * 0.4)) * 0.4);
+        col.push(c.r, c.g, c.b); glow.push(this.glowAt(x, y, z));
+      });
+      if (nring) { const a = (nring - 1) * n; for (let k = 0; k < n - 1; k++) idx.push(a + k, a + k + 1, a + n + k, a + k + 1, a + n + k + 1, a + n + k); }
+      nring++; this.ringN = n;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('glow', new THREE.Float32BufferAttribute(glow, 1));
+    g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, this.wallMat = this.glowMat({ side: THREE.DoubleSide })); m.receiveShadow = true;
+    this.inner.add(m); this.tube = m;
+  },
+  // ---------- gems ----------
+  placeClusters(S, i0, i1, rng) {
+    const out = [];
+    for (let i = i0 + 3; i < i1 - 3; i += 2) {
+      const p = S[i], C = caveSize(p.s);
+      if (rng() > (C.big > 0.5 ? 0.9 : 0.38)) continue;
+      const R = this.ring(p, p.s), n = R.length;
+      const k = 5 + Math.floor(rng() * (n - 10)); // somewhere on the walls or the roof
+      const [L, Y] = R[k], cx = 0, cy = lerp(this.floorDy(p, this.deck.halfW) + 1.5, -6, C.big);
+      const [x, y, z] = this.worldPt(p, L, Y), dn = Math.hypot(L - cx, Y - cy) || 1;
+      const inn = new THREE.Vector3(p.tz * (L - cx) / dn, -(Y - cy) / dn, -p.tx * (L - cx) / dn); // toward the middle of the tube
+      out.push({ x, y, z, n: inn, s: p.s, big: C.big > 0.5, k: 0.7 + rng() * 0.6 });
+    }
+    // the Great Cavern's chasm floor: a few huge crystals rising out of the glowing pool
+    for (let i = i0; i < i1; i += 5) {
+      const p = S[i], C = caveSize(p.s); if (C.big < 0.85 || rng() > 0.55) continue;
+      for (const sg of [-1, 1]) { const L = sg * (13 + rng() * 8), [x, y, z] = this.worldPt(p, L, -18.5); out.push({ x, y, z, n: new THREE.Vector3((rng() - 0.5) * 0.4, 1, (rng() - 0.5) * 0.4).normalize(), s: p.s, big: true, k: 1.3, giant: true }); }
+    }
+    return out;
+  },
+  buildGems(rng) {
+    const prism = new THREE.CylinderGeometry(0.5, 0.5, 0.75, 6, 1); prism.translate(0, 0.375, 0);
+    const tip = new THREE.ConeGeometry(0.5, 0.45, 6, 1); tip.translate(0, 0.75 + 0.225, 0);
+    const geo = mergeGeos([prism.toNonIndexed(), tip.toNonIndexed()]); geo.computeVertexNormals();
+    const list = [];
+    for (const c of this.clusters) {
+      const m = c.giant ? 3 : 3 + Math.floor(rng() * 5);
+      for (let j = 0; j < m; j++) {
+        const dir = c.n.clone().add(new THREE.Vector3((rng() - 0.5) * 0.9, (rng() - 0.5) * 0.9, (rng() - 0.5) * 0.9)).normalize();
+        const len = c.giant ? 12 + rng() * 11 : (c.big ? 1.2 + rng() * 3.2 : 0.5 + rng() * 1.4), w = len * (c.giant ? 0.22 : 0.26 + rng() * 0.12);
+        const off = new THREE.Vector3((rng() - 0.5) * 1.2, (rng() - 0.5) * 1.2, (rng() - 0.5) * 1.2).multiplyScalar(c.giant ? 3 : 1);
+        list.push({ p: new THREE.Vector3(c.x, c.y, c.z).add(off).addScaledVector(c.n, -0.25), dir, len, w, hue: rng() });
+      }
+    }
+    const mat = new THREE.MeshLambertMaterial({ color: 0x9dffc6, emissive: 0x1fcf6a, emissiveIntensity: 1.25, flatShading: true, fog: false });
+    const im = new THREE.InstancedMesh(geo, mat, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), sc = new THREE.Vector3(), col = new THREE.Color();
+    list.forEach((g, k) => { q.setFromUnitVectors(up, g.dir); sc.set(g.w, g.len, g.w); m4.compose(g.p, q, sc); im.setMatrixAt(k, m4); im.setColorAt(k, col.setHSL(0.36 + g.hue * 0.12, 0.85, 0.55 + g.hue * 0.15)); });
+    im.computeBoundingSphere(); this.inner.add(im); this.gemMat = mat;
+    // soft halos round each cluster
+    const halo = canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(120,255,170,0.9)'); g.addColorStop(0.35, 'rgba(60,230,120,0.32)'); g.addColorStop(1, 'rgba(20,160,80,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    const hp = []; for (const c of this.clusters) hp.push(c.x + c.n.x * 0.8, c.y + c.n.y * 0.8, c.z + c.n.z * 0.8);
+    const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3));
+    this.haloMat = new THREE.PointsMaterial({ map: halo, size: 9, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55, fog: false });
+    this.inner.add(new THREE.Points(hg, this.haloMat));
+  },
+  // ---------- stalactites (and stalagmites in the chasm) ----------
+  buildRocks(S, i0, i1, rng) {
+    const cone = new THREE.ConeGeometry(0.5, 1, 6, 1); cone.translate(0, -0.5, 0); cone.rotateX(Math.PI); // tip at y=-1 after flip → hangs down from y=0
+    const list = [];
+    for (let i = i0 + 2; i < i1 - 2; i++) {
+      const p = S[i], C = caveSize(p.s), R = this.ring(p, p.s), n = R.length;
+      const cnt = rng() < 0.55 ? 1 + Math.floor(rng() * (C.big > 0.5 ? 3 : 2)) : 0;
+      for (let j = 0; j < cnt; j++) {
+        const k = Math.floor(n / 2 + (rng() - 0.5) * (n - 14)); const [L, Y] = R[k];
+        const len = C.big > 0.5 ? 2.5 + rng() * 7 : 0.8 + rng() * 2.6, [x, y, z] = this.worldPt(p, L, Y + 0.4);
+        if (Y - len < this.floorDy(p, L) + 5.2 && Math.abs(L) < this.deck.halfW + 1) continue; // never low enough to touch a car
+        list.push([x, y, z, len, len * (0.18 + rng() * 0.1), 1]);
+      }
+      if (C.big > 0.7 && rng() < 0.5) { const L = (rng() < 0.5 ? -1 : 1) * (13 + rng() * 8), [x, y, z] = this.worldPt(p, L, -19.2), len = 2 + rng() * 6; list.push([x, y, z, len, len * 0.24, -1]); }
+    }
+    const mat = new THREE.MeshLambertMaterial({ color: 0x3e3a46, flatShading: true });
+    const im = new THREE.InstancedMesh(cone, mat, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3(), e = new THREE.Euler();
+    list.forEach(([x, y, z, len, w, dir], k) => { e.set(dir < 0 ? Math.PI : 0, rng() * TAU, 0); q.setFromEuler(e); sc.set(w, len, w); v.set(x, y, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+    im.computeBoundingSphere(); this.inner.add(im);
+  },
+  // ---------- the Great Cavern's glowing pool ----------
+  buildChasm(S, i0, i1) {
+    const pos = [], idx = []; let n = 0;
+    for (let i = i0; i <= i1; i++) {
+      const p = S[i], C = caveSize(p.s); if (C.big < 0.3) continue;
+      for (const L of [-C.hw * 0.92, C.hw * 0.92]) { const [x, y, z] = this.worldPt(p, L, -18.9); pos.push(x, y, z); }
+      if (n) { const a = (n - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } n++;
+    }
+    if (n < 2) return;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, this.poolMat = new THREE.MeshBasicMaterial({ color: 0x35ff8e, transparent: true, opacity: 0.8, side: THREE.DoubleSide, fog: false }));
+    this.inner.add(m);
+    // glow rising off the pool
+    const tex = canvasTex(64, 64, (c, w, h) => { const g2 = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g2.addColorStop(0, 'rgba(110,255,170,0.7)'); g2.addColorStop(1, 'rgba(30,200,100,0)'); c.fillStyle = g2; c.fillRect(0, 0, w, h); });
+    const hp = []; for (let i = i0; i <= i1; i += 2) { const p = S[i], C = caveSize(p.s); if (C.big < 0.5) continue; for (const L of [-C.hw * 0.55, C.hw * 0.55]) { const w = this.worldPt(p, L * 1.35 + (Math.random() - 0.5) * 6, -14 + Math.random() * 12); hp.push(...w); } }
+    const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3));
+    this.inner.add(new THREE.Points(hg, new THREE.PointsMaterial({ map: tex, size: 16, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.4, fog: false })));
+  },
+  // ---------- cobwebs and bones ----------
+  buildDecor(S, i0, i1, rng) {
+    const web = canvasTex(128, 128, (c, w, h) => {
+      c.strokeStyle = 'rgba(225,235,230,0.75)'; c.lineWidth = 1.2; const cx = 4, cy = 4;
+      for (let a = 0; a <= 9; a++) { const t = a / 9 * Math.PI / 2; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(t) * 124, cy + Math.sin(t) * 124); c.stroke(); }
+      for (let r = 14; r < 124; r += 13) { c.beginPath(); for (let a = 0; a <= 9; a++) { const t = a / 9 * Math.PI / 2, rr = r * (0.92 + 0.08 * Math.sin(a * 2.3)); const x = cx + Math.cos(t) * rr, y = cy + Math.sin(t) * rr; a ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
+    });
+    const wm = new THREE.MeshBasicMaterial({ map: web, transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.65 });
+    const webs = [];
+    for (let i = i0 + 4; i < i1 - 4; i += 3) {
+      if (rng() > 0.32) continue; const p = S[i], R = this.ring(p, p.s), n = R.length, left = rng() < 0.5;
+      const [L, Y] = R[left ? n - 6 : 5]; webs.push({ p: this.worldPt(p, L * 0.97, Y - 0.6), yaw: Math.atan2(p.tx, p.tz) + (left ? -0.5 : 0.5) * Math.PI * 0.5, s: 2.5 + rng() * 2.5, left });
+    }
+    const wg = new THREE.PlaneGeometry(1, 1); wg.translate(0.5, -0.5, 0);
+    const wi = new THREE.InstancedMesh(wg, wm, webs.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    webs.forEach((w, k) => { e.set(0, w.yaw, w.left ? Math.PI : 0); q.setFromEuler(e); sc.set(w.s, w.s, 1); v.set(...w.p); m4.compose(v, q, sc); wi.setMatrixAt(k, m4); });
+    wi.computeBoundingSphere(); this.inner.add(wi);
+    // bone piles on the channel slopes (skull + a few bones)
+    const parts = [];
+    const skull = new THREE.SphereGeometry(0.16, 7, 5); skull.scale(1, 0.9, 1.1); skull.translate(0, 0.16, 0); parts.push(colorizeGeo(skull, 0xd8d2b8));
+    const jaw = new THREE.BoxGeometry(0.18, 0.07, 0.14); jaw.translate(0, 0.05, 0.09); parts.push(colorizeGeo(jaw, 0xcac3a6));
+    for (let b = 0; b < 3; b++) { const bone = new THREE.CylinderGeometry(0.03, 0.03, 0.55, 5); bone.rotateZ(Math.PI / 2); bone.rotateY(b * 1.1 + 0.3); bone.translate((b - 1) * 0.18, 0.04, -0.15 + b * 0.1); parts.push(colorizeGeo(bone, 0xd2ccb0)); }
+    const eye = new THREE.BoxGeometry(0.05, 0.05, 0.02); for (const sx of [-0.06, 0.06]) { const e2 = eye.clone(); e2.translate(sx, 0.18, 0.165); parts.push(colorizeGeo(e2, 0x1a1a1a)); }
+    const pg = mergeGeos(parts), piles = [];
+    for (let i = i0 + 6; i < i1 - 6; i += 2) { if (rng() > 0.18) continue; const p = S[i], sg = rng() < 0.5 ? -1 : 1, L = sg * (this.deck.channel.flat + 1.2 + rng() * 2.2); piles.push([...this.worldPt(p, L, this.floorDy(p, L) + 0.02), rng() * TAU]); }
+    const pm = new THREE.InstancedMesh(pg, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), piles.length);
+    piles.forEach(([x, y, z, a], k) => { e.set(0, a, 0); q.setFromEuler(e); sc.set(1.3, 1.3, 1.3); v.set(x, y, z); m4.compose(v, q, sc); pm.setMatrixAt(k, m4); });
+    pm.computeBoundingSphere(); this.inner.add(pm);
+  },
+  // ---------- drifting green mist near the floor ----------
+  buildMist(S, i0, i1, rng) {
+    const tex = canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(150,220,170,0.55)'); g.addColorStop(1, 'rgba(90,160,110,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    const N = 150, pos = new Float32Array(N * 3); this.mist = [];
+    for (let k = 0; k < N; k++) {
+      const i = i0 + Math.floor(rng() * (i1 - i0)), p = S[i], L = (rng() - 0.5) * 2 * (this.deck.halfW - 1);
+      const [x, y, z] = this.worldPt(p, L, this.floorDy(p, L) + 0.4 + rng() * 1.6); this.mist.push({ x, y, z, ph: rng() * TAU, sp: 0.3 + rng() * 0.5 });
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.mistPts = new THREE.Points(g, new THREE.PointsMaterial({ map: tex, size: 7, sizeAttenuation: true, transparent: true, depthWrite: false, opacity: 0.16, color: 0xb8ffd0 }));
+    this.mistPts.frustumCulled = false; this.inner.add(this.mistPts);
+  },
+  // ---------- bats in the Great Cavern (wings flap in the vertex shader) ----------
+  buildBats(S, rng) {
+    const wing = new THREE.BufferGeometry(), wp = [0, 0, 0.18, 0.62, 0.05, -0.05, 0.25, 0.02, -0.28, 0, 0, 0.18, -0.25, 0.02, -0.28, -0.62, 0.05, -0.05];
+    wing.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wing.computeVertexNormals();
+    const body = new THREE.SphereGeometry(0.09, 5, 4); body.scale(1, 0.8, 1.6);
+    const g = mergeGeos([wing, body.toNonIndexed()]);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x0b0a10, side: THREE.DoubleSide });
+    mat.userData.t = { value: 0 };
+    mat.onBeforeCompile = (sh) => { sh.uniforms.uT = mat.userData.t; sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float ph = float(gl_InstanceID) * 1.7; float fa = sin(uT * 18.0 + ph) * 0.9; float ax = abs(transformed.x);
+      transformed.y += ax * sin(fa) * 1.2; transformed.x = sign(transformed.x) * ax * cos(fa);`); };
+    mat.customProgramCacheKey = () => 'cavebat';
+    const [a, b] = CAVE_DEF.cavern, mid = S.reduce((m, p) => Math.abs(p.s - (a + b) / 2) < Math.abs(m.s - (a + b) / 2) ? p : m, S[0]);
+    this.bats = []; for (let k = 0; k < 18; k++) this.bats.push({ ph: rng() * TAU, r: 6 + rng() * 14, sp: (0.6 + rng() * 0.6) * (rng() < 0.5 ? 1 : -1), y: mid.y + 9 + rng() * 12, cx: mid.x + (rng() - 0.5) * 30, cz: mid.z + (rng() - 0.5) * 30, ox: rng() * 50 });
+    this.batMesh = new THREE.InstancedMesh(g, mat, this.bats.length); this.batMesh.frustumCulled = false; this.batMat = mat; this.inner.add(this.batMesh);
+  },
+  // ---------- the mouths: rock portals over the terrain holes, torches and warning signs ----------
+  buildPortals(S, rng) {
+    const rock = new THREE.MeshLambertMaterial({ color: 0x6d6676, flatShading: true });
+    const timber = new THREE.MeshLambertMaterial({ color: 0x5a4130, flatShading: true });
+    const d = this.deck, list = [];
+    for (const [sM, dir] of [[this.sE, -1], [this.sW, 1]]) {
+      const iM = S.findIndex(p => p.s >= sM), p = S[iM], R = this.ring(p, p.s), n = R.length, C = caveSize(p.s);
+      // face: an arch-shaped collar from the tube out to a big rough outline, standing at the mouth
+      const pos = [], idx = [], outerR = 1.0;
+      for (let k = 0; k < n; k++) {
+        const [L, Y] = R[k], base = this.floorDy(p, d.halfW) + 0.4, dl = L, dy = Math.max(Y - base, 0);
+        const grow = 1 + (6 + 3 * Noise.simplex(k * 0.7, sM)) / Math.max(4, Math.hypot(dl, dy));
+        const L2 = dl * grow, Y2 = base + dy * grow + (k === 0 || k === n - 1 ? -1.5 : 1.5);
+        for (const [l, y, off] of [[L, Y, 0], [L2 * outerR, Y2, -dir * 1.2]]) { const w = this.worldPt(p, l, y); pos.push(w[0] + p.tx * off * -1, w[1], w[2] + p.tz * off * -1); }
+        if (k) { const a = (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      const face = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x6a6373, flatShading: true, side: THREE.DoubleSide })); this.outer.add(face);
+      // an old mine entrance: timber posts and a lintel just inside the mouth, a sign hung from it
+      { const q = S[Math.max(0, iM - dir * 2)], yaw = Math.atan2(q.tx, q.tz), px = this.deck.channel.flat + 2.6, top = 8.2;
+        const gg = new THREE.Group(); gg.position.set(q.x, q.y, q.z); gg.rotation.y = yaw;
+        for (const sg of [-1, 1]) { const fy = this.floorDy(q, px); const post = new THREE.Mesh(new THREE.BoxGeometry(0.55, top - fy + 0.6, 0.55), timber); post.position.set(sg * px, fy + (top - fy + 0.6) / 2 - 0.3, 0); post.rotation.z = sg * 0.03; gg.add(post);
+          const brace = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.4, 0.3), timber); brace.position.set(sg * (px - 0.9), top - 0.9, 0); brace.rotation.z = sg * -0.75; gg.add(brace); }
+        const lintel = new THREE.Mesh(new THREE.BoxGeometry(px * 2 + 1.6, 0.6, 0.65), timber); lintel.position.set(0, top + 0.2, 0); gg.add(lintel);
+        const tex = canvasTex(512, 128, (c, w, h) => { c.fillStyle = '#3d2b1d'; c.fillRect(0, 0, w, h); for (let i = 0; i < 300; i++) { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(Math.random() * w, Math.random() * h, 10 + Math.random() * 60, 2); }
+          c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '900 64px Georgia, serif'; c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillText('EMERALD CAVERNS', w / 2 + 3, h / 2 + 4); c.fillStyle = '#86ffb4'; c.fillText('EMERALD CAVERNS', w / 2, h / 2); });
+        const sm = new THREE.MeshLambertMaterial({ map: tex, emissive: 0x1f5a35, emissiveMap: tex, emissiveIntensity: 0.6 });
+        const sign = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 0.15), [timber, timber, timber, timber, dir > 0 ? sm : timber, dir < 0 ? sm : timber]); sign.position.set(0, top - 1.35, dir * -0.1); sign.rotation.z = 0.035; gg.add(sign);
+        for (const sx of [-3.2, 3.2]) { const ch = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), new THREE.MeshLambertMaterial({ color: 0x222222 })); ch.position.set(sx, top - 0.15, 0); gg.add(ch); }
+        this.outer.add(gg); }
+      // hood: a rock skin over the terrain hole that follows the hillside but arches over the tunnel
+      const H = World.holes.find(h => Math.hypot(h.x - p.x, h.z - p.z) < 20) || World.holes[0];
+      const hp = [], hi = [], NA = 16, NL = 16, tuck = [], arc = [];
+      for (let a = 0; a <= NA; a++) for (let l = 0; l <= NL; l++) {
+        const al = -H.hl - 2 + (2 * H.hl + 4) * a / NA, lt = -H.hw - 3 + (2 * H.hw + 6) * l / NL;
+        const x = H.x + H.tx * al - H.tz * lt, z = H.z + H.tz * al + H.tx * lt;
+        let y = groundHeight(x, z) + 0.35;
+        const sAlong = (x - p.x) * p.tx + (z - p.z) * p.tz, inward = sAlong * -dir; // + = into the hill
+        const tk = Math.abs(lt) < d.halfW + 1.2 && inward <= -1.5, ar = Math.abs(lt) < C.hw + 1.5 && inward > -1.5;
+        if (tk) y = p.y - 0.4; // (tucked just under the floor where the open road runs in)
+        tuck.push(tk); arc.push(ar);
+        if (ar) { const arch = p.y + this.floorDy(p, d.halfW) + 0.4 + (C.top - this.floorDy(p, d.halfW)) * Math.sqrt(Math.max(0, 1 - (lt / (C.hw + 1.5)) ** 2)) + 1.6; y = Math.max(y, arch); }
+        hp.push(x, y, z);
+        if (a && l) { const A = (a - 1) * (NL + 1) + l - 1, B = A + 1, Cc = A + NL + 1, D = Cc + 1; const q4 = [A, B, Cc, D]; if (!(q4.some(i => tuck[i]) && q4.some(i => arc[i]))) hi.push(A, Cc, B, B, Cc, D); } // (no curtain across the mouth)
+      }
+      const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3)); hg.setIndex(hi); hg.computeVertexNormals();
+      this.outer.add(new THREE.Mesh(hg, new THREE.MeshLambertMaterial({ color: 0x625b6b, flatShading: true, side: THREE.DoubleSide })));
+      // boulders round the face to hide every seam
+      for (let b = 0; b < 16; b++) {
+        const th = rng() * Math.PI, rr = C.hw + 2 + rng() * 4, L = Math.cos(th) * rr, Y = this.floorDy(p, d.halfW) + Math.sin(th) * (C.top + 2) - 1;
+        const w = this.worldPt(p, L, Y); list.push([w[0] - p.tx * dir * 1.5, w[1], w[2] - p.tz * dir * 1.5, 2 + rng() * 3]);
+      }
+      // green-flame torches on posts either side
+      for (const sg of [-1, 1]) {
+        const w = this.worldPt(p, sg * (d.halfW + 1.4), this.floorDy(p, d.halfW + 1.4));
+        const tx = w[0] + p.tx * dir * 4, tz = w[2] + p.tz * dir * 4, ty = groundHeight(tx, tz);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 3.2, 6), new THREE.MeshLambertMaterial({ color: 0x3b2a1e })); post.position.set(tx, ty + 1.6, tz); this.outer.add(post);
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.22, 0.35, 8), new THREE.MeshLambertMaterial({ color: 0x2a2a2a })); bowl.position.set(tx, ty + 3.3, tz); this.outer.add(bowl);
+        (this.torches = this.torches || []).push({ x: tx, y: ty + 3.75, z: tz });
+      }
+      // signs at the east mouth
+      if (dir < 0) {
+        const sign = (lines, w, h, x, z, yaw, y0, tilt) => {
+          const tex = canvasTex(512, Math.round(512 * h / w), (c, W2, H2) => {
+            c.fillStyle = '#4a3523'; c.fillRect(0, 0, W2, H2); for (let yy = 0; yy < H2; yy += H2 / 3) { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(0, yy, W2, 3); }
+            for (let i = 0; i < 400; i++) { c.fillStyle = `rgba(${30 + Math.random() * 40},${20 + Math.random() * 20},10,0.3)`; c.fillRect(Math.random() * W2, Math.random() * H2, 2 + Math.random() * 30, 2); }
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            lines.forEach(([t, sz, colr], i) => { c.font = `900 ${sz}px Georgia, serif`; c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillText(t, W2 / 2 + 3, H2 * (i + 0.5) / lines.length + 3); c.fillStyle = colr; c.fillText(t, W2 / 2, H2 * (i + 0.5) / lines.length); });
+          });
+          const gy = groundHeight(x, z) + y0, gg = new THREE.Group(); gg.position.set(x, gy, z); gg.rotation.set(0, yaw, tilt || 0);
+          const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), [rock, rock, rock, rock, new THREE.MeshLambertMaterial({ map: tex }), new THREE.MeshLambertMaterial({ color: 0x3b2a1e })]); gg.add(board);
+          for (const sx of [-w * 0.38, w * 0.38]) { const pst = new THREE.Mesh(new THREE.BoxGeometry(0.16, y0 + h / 2, 0.16), new THREE.MeshLambertMaterial({ color: 0x33241a })); pst.position.set(sx, -(y0 + h / 2) / 2 + h / 2, -0.1); gg.add(pst); }
+          this.outer.add(gg);
+        };
+        const q = S.find(z => z.s >= this.sE - 26) || S[0], yaw = Math.atan2(q.tx, q.tz) + Math.PI;
+        const r1 = this.worldPt(q, -(d.halfW + 3.5), 0), r2 = this.worldPt(q, d.halfW + 3.8, 0);
+        sign([['EMERALD', 64, '#7dffae'], ['CAVERNS', 64, '#7dffae'], ['ENTER IF YOU DARE', 30, '#f1e4c8']], 5.2, 2.6, r1[0], r1[2], yaw - 0.35, 1.9);
+        sign([['BEWARE', 54, '#ff6b5b'], ['OF THE', 30, '#f1e4c8'], ['ZOMBIES', 54, '#ff6b5b']], 2.6, 2.2, r2[0], r2[2], yaw + 0.4, 1.4, 0.12);
+      }
+    }
+    const bg = new THREE.DodecahedronGeometry(1, 0);
+    const bm = new THREE.InstancedMesh(bg, rock, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    list.forEach(([x, y, z, r], k) => { e.set(rng() * 3, rng() * 3, rng() * 3); q.setFromEuler(e); sc.set(r, r * (0.6 + rng() * 0.5), r * (0.8 + rng() * 0.4)); v.set(x, y, z); m4.compose(v, q, sc); bm.setMatrixAt(k, m4); });
+    bm.computeBoundingSphere(); this.outer.add(bm);
+    // torch flames: flickering additive sprites
+    const ft = canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h * 0.62, 0, w / 2, h * 0.62, w / 2); g.addColorStop(0, 'rgba(230,255,200,1)'); g.addColorStop(0.3, 'rgba(90,255,140,0.8)'); g.addColorStop(1, 'rgba(20,200,90,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    this.flames = (this.torches || []).map(t => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ft, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); s.position.set(t.x, t.y + 0.2, t.z); s.scale.set(1.8, 2.6, 1); this.outer.add(s); return s; });
+    const gp = canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(90,255,150,0.55)'); g.addColorStop(1, 'rgba(40,200,100,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    for (const t of this.torches || []) { const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshBasicMaterial({ map: gp, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -6 })); m.rotation.x = -Math.PI / 2; m.position.set(t.x, groundHeight(t.x, t.z) + 0.15, t.z); this.outer.add(m); }
+  },
+
+  // ---------- up on Gator Bayou: dead trees, reeds, a graveyard and will-o'-the-wisps ----------
+  buildBayou(scene, rng) {
+    const B = BAYOU, free = (x, z, pad = 7) => { const nr = World.roadIndex.nearest(x, z, 30); return !(nr && nr.d < World.roads[nr.ri].halfW + pad); };
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    // dead trees: a leaning grey trunk with a few crooked bare branches
+    const tp = [];
+    { const tr = new THREE.CylinderGeometry(0.16, 0.42, 7, 6, 3); tr.translate(0, 3.5, 0); const ps = tr.attributes.position; for (let i = 0; i < ps.count; i++) { const y = ps.getY(i); ps.setX(i, ps.getX(i) + Math.sin(y * 0.6) * 0.35); } tp.push(colorizeGeo(tr, 0x4a423b));
+      for (const [y, a, l, t] of [[4.2, 0.4, 2.6, 0.9], [5.0, 2.6, 2.2, 0.8], [5.8, 4.4, 1.8, 0.7], [3.4, 5.5, 1.6, 1.1], [6.3, 1.4, 1.4, 0.5]]) { const br = new THREE.CylinderGeometry(0.04, 0.12, l, 4); br.translate(0, l / 2, 0); br.rotateZ(t); br.rotateY(a); br.translate(Math.sin(y * 0.6) * 0.35, y, 0); tp.push(colorizeGeo(br, 0x403830)); } }
+    const treeGeo = mergeGeos(tp), trees = [];
+    for (let k = 0; k < 900 && trees.length < 110; k++) {
+      const a = rng() * TAU, r = Math.sqrt(rng()) * B.r, x = B.x + Math.cos(a) * r, z = B.z + Math.sin(a) * r, h = groundHeight(x, z);
+      if (h < 0.6 || h > 9 || hollowHill(x, z) > 2 || !free(x, z)) continue; trees.push([x, h, z, 0.7 + rng() * 0.7]);
+    }
+    const tm = new THREE.InstancedMesh(treeGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), trees.length); tm.castShadow = true;
+    trees.forEach(([x, h, z, s], k) => { e.set((rng() - 0.5) * 0.25, rng() * TAU, (rng() - 0.5) * 0.25); q.setFromEuler(e); sc.set(s, s * (0.8 + rng() * 0.5), s); v.set(x, h - 0.3, z); m4.compose(v, q, sc); tm.setMatrixAt(k, m4); });
+    tm.computeBoundingSphere(); this.outer.add(tm);
+    // reeds and cattails round the black pools
+    const rp = []; for (let k = 0; k < 7; k++) { const c = new THREE.ConeGeometry(0.05, 1.6 + (k % 3) * 0.4, 3, 1, true); c.translate(0, 0.8, 0); c.rotateZ((k - 3) * 0.12); c.rotateY(k * 0.9); c.translate((k % 3 - 1) * 0.15, 0, (k % 2) * 0.15); rp.push(colorizeGeo(c, k % 2 ? 0x6f7a3a : 0x8a8448)); }
+    for (const [dx, dz] of [[0.1, 0.05], [-0.12, -0.08]]) { const t = new THREE.CylinderGeometry(0.07, 0.07, 0.32, 5); t.translate(dx, 1.9, dz); rp.push(colorizeGeo(t, 0x4a2f1f)); }
+    const reedGeo = mergeGeos(rp), reeds = [];
+    for (let k = 0; k < 4000 && reeds.length < 420; k++) {
+      const a = rng() * TAU, r = Math.sqrt(rng()) * (B.r + 10), x = B.x + Math.cos(a) * r, z = B.z + Math.sin(a) * r, h = groundHeight(x, z);
+      if (h < -0.2 || h > 2.4 || !free(x, z, 3) || hollowHill(x, z) > 1) continue; reeds.push([x, h, z]);
+    }
+    const rm = new THREE.InstancedMesh(reedGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), reeds.length);
+    reeds.forEach(([x, h, z], k) => { e.set(0, rng() * TAU, 0); q.setFromEuler(e); const s = 0.8 + rng() * 0.7; sc.set(s, s, s); v.set(x, Math.max(h, -0.05) - 0.1, z); m4.compose(v, q, sc); rm.setMatrixAt(k, m4); });
+    rm.computeBoundingSphere(); this.outer.add(rm);
+    // the graveyard by Graveyard Lane: crooked headstones, crosses, an iron railing
+    const G = { x: -1175, z: -168 }, stones = [], crossG = mergeGeos([colorizeGeo(new THREE.BoxGeometry(0.16, 1.3, 0.12).translate(0, 0.65, 0), 0x8f8a80), colorizeGeo(new THREE.BoxGeometry(0.7, 0.14, 0.12).translate(0, 0.95, 0), 0x8f8a80)]);
+    const stoneG = (() => { const b = new THREE.BoxGeometry(0.8, 1.0, 0.2); b.translate(0, 0.5, 0); const top = new THREE.CylinderGeometry(0.4, 0.4, 0.2, 10, 1, false, 0, Math.PI); top.rotateX(Math.PI / 2); top.rotateZ(Math.PI / 2); top.rotateY(Math.PI / 2); top.translate(0, 1.0, 0); return mergeGeos([colorizeGeo(b, 0x7d7a74), colorizeGeo(top, 0x7d7a74)]); })();
+    const crosses = [];
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 8; c++) {
+      if (rng() < 0.18) continue; const x = G.x - 18 + c * 4.6 + (rng() - 0.5) * 1.2, z = G.z - 10 + r * 4.2 + (rng() - 0.5) * 0.8, h = groundHeight(x, z);
+      if (h < 0.4 || !free(x, z, 3)) continue; (rng() < 0.3 ? crosses : stones).push([x, h, z]);
+    }
+    for (const [list, geo] of [[stones, stoneG], [crosses, crossG]]) {
+      const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), list.length); im.castShadow = true;
+      list.forEach(([x, h, z], k) => { e.set((rng() - 0.5) * 0.35, 0.3 + (rng() - 0.5) * 0.5, (rng() - 0.5) * 0.3); q.setFromEuler(e); sc.set(1, 0.85 + rng() * 0.4, 1); v.set(x, h - 0.15, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+      im.computeBoundingSphere(); this.outer.add(im);
+    }
+    const rail = [], rmat = new THREE.MeshLambertMaterial({ color: 0x1f1f24 });
+    for (let k = 0; k <= 46; k++) { const t = k / 46, side = Math.floor(t * 4), u = t * 4 - side; const P = [[-21, -13], [17, -13], [17, 11], [-21, 11], [-21, -13]]; const a = P[side], b = P[Math.min(side + 1, 4)]; const x = G.x + lerp(a[0], b[0], u), z = G.z + lerp(a[1], b[1], u); if (!free(x, z, 1.5)) continue; rail.push([x, groundHeight(x, z), z]); }
+    const spike = new THREE.CylinderGeometry(0.035, 0.035, 1.5, 4); spike.translate(0, 0.75, 0);
+    const sm2 = new THREE.InstancedMesh(spike, rmat, rail.length); rail.forEach(([x, h, z], k) => { m4.makeTranslation(x, h - 0.1, z); sm2.setMatrixAt(k, m4); }); sm2.computeBoundingSphere(); this.outer.add(sm2);
+    // black, still bayou water over the pools (fades out into the sea round the shore)
+    const wa = canvasTex(128, 128, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, '#fff'); g.addColorStop(0.78, '#fff'); g.addColorStop(1, '#000'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    const bw = new THREE.Mesh(new THREE.CircleGeometry(B.r + 45, 48), new THREE.MeshLambertMaterial({ color: 0x2c3a26, alphaMap: wa, transparent: true, opacity: 0.93, depthWrite: false }));
+    bw.rotation.x = -Math.PI / 2; bw.position.set(B.x, 0.05, B.z); bw.renderOrder = 1; this.outer.add(bw);
+    // will-o'-the-wisps drifting over the marsh
+    const wt = canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(220,255,230,1)'); g.addColorStop(0.25, 'rgba(110,255,170,0.7)'); g.addColorStop(1, 'rgba(40,220,120,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    this.wisps = []; for (let k = 0; k < 26; k++) { const a = rng() * TAU, r = 60 + rng() * (B.r - 70), x = B.x + Math.cos(a) * r, z = B.z + Math.sin(a) * r; if (hollowHill(x, z) > 1) continue; this.wisps.push({ x, z, y: Math.max(groundHeight(x, z), 0) + 1.2 + rng() * 1.5, ph: rng() * TAU }); }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.wisps.length * 3), 3));
+    this.wispPts = new THREE.Points(wg, new THREE.PointsMaterial({ map: wt, size: 1.6, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.85, fog: false }));
+    this.wispPts.frustumCulled = false; this.outer.add(this.wispPts);
+  },
+
+  // ============================================================
+  //  Zombies: one instanced mesh. Each zombie is a merged low-poly figure whose limbs are tagged
+  //  (attribute `part`) so the vertex shader can sway, shuffle and reach; per-zombie state goes in
+  //  an instanced vec4 (phase, lurch, armsUp, unused). The CPU moves and topples them.
+  // ============================================================
+  zombieGeo() {
+    const parts = [], tag = (g, part, tint, hex) => { const n = g.attributes.position.count; g.setAttribute('part', new THREE.Float32BufferAttribute(new Array(n).fill(part), 1)); g.setAttribute('tint', new THREE.Float32BufferAttribute(new Array(n).fill(tint), 1)); colorizeGeo(g, hex); return g; };
+    const box = (w, h, d, x, y, z) => { const g = new THREE.BoxGeometry(w, h, d).toNonIndexed(); g.translate(x, y, z); return g; };
+    const skin = 0x86ad6c, skinD = 0x6f9459, pants = 0x2f3140, shirt = 0xffffff;
+    // legs (pivot at the hips, y 0.86)
+    parts.push(tag(box(0.2, 0.86, 0.22, -0.13, 0.43, 0), 4, 0, pants), tag(box(0.2, 0.86, 0.22, 0.13, 0.43, 0), 5, 0, pants));
+    parts.push(tag(box(0.22, 0.1, 0.3, -0.13, 0.05, 0.05), 4, 0, 0x2a2018), tag(box(0.22, 0.1, 0.3, 0.13, 0.05, 0.05), 5, 0, 0x2a2018));
+    // torso, torn shirt (tinted per zombie), belt
+    parts.push(tag(box(0.52, 0.62, 0.3, 0, 1.18, 0), 0, 1, shirt), tag(box(0.54, 0.08, 0.32, 0, 0.88, 0), 0, 0, 0x231a14));
+    parts.push(tag(box(0.2, 0.18, 0.02, 0.1, 1.0, 0.16), 0, 0, skinD)); // a rip showing skin
+    // head (pivot at the neck, y 1.5): green face, dark eye sockets with glowing pupils, a slack jaw
+    parts.push(tag(box(0.34, 0.36, 0.34, 0, 1.69, 0.02), 1, 0, skin));
+    parts.push(tag(box(0.3, 0.1, 0.3, 0, 1.84, 0.0), 1, 0, 0x3b3328)); // scraggly hair
+    for (const sx of [-0.08, 0.08]) { parts.push(tag(box(0.09, 0.07, 0.02, sx, 1.72, 0.195), 1, 0, 0x1a1414)); parts.push(tag(box(0.035, 0.035, 0.02, sx, 1.72, 0.205), 6, 0, 0xfff04a)); }
+    parts.push(tag(box(0.2, 0.06, 0.02, 0, 1.585, 0.195), 1, 0, 0x2b0f0f));
+    // arms (pivot at the shoulders, y 1.44), hands
+    for (const [sx, pt] of [[-0.34, 2], [0.34, 3]]) { parts.push(tag(box(0.14, 0.6, 0.14, sx, 1.14, 0), pt, 1, shirt)); parts.push(tag(box(0.12, 0.16, 0.13, sx, 0.78, 0.0), pt, 0, skin)); }
+    return mergeAttrs(parts, ['position', 'normal', 'color', 'part', 'tint']);
+  },
+  zombieMat() {
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    mat.userData.t = { value: 0 };
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uT = mat.userData.t;
+      sh.vertexShader = 'uniform float uT; attribute float part; attribute float tint; attribute vec4 zst; varying float vEye;\n'
+        + 'mat3 rx(float a){float c=cos(a),s=sin(a);return mat3(1.,0.,0.,0.,c,s,0.,-s,c);} mat3 rz(float a){float c=cos(a),s=sin(a);return mat3(c,s,0.,-s,c,0.,0.,0.,1.);}\n'
+        + sh.vertexShader
+          .replace('#include <color_vertex>', '#include <color_vertex>\n#ifdef USE_INSTANCING_COLOR\n vColor.rgb = mix(color.rgb, color.rgb * instanceColor.rgb, tint);\n#endif')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>
+            float ph = zst.x, lu = zst.y, up = zst.z; vEye = part > 5.5 ? 1.0 : 0.0;
+            // arms reach forward (more when lurching), bobbing
+            if (part > 1.5 && part < 3.5) { float sd = part < 2.5 ? 1.0 : -1.0; vec3 pv = vec3(0.34 * (part < 2.5 ? -1.0 : 1.0), 1.44, 0.0);
+              float a = -1.25 - up * 0.35 + 0.16 * sin(uT * 2.1 + ph + sd) - lu * 0.12 * sin(uT * 7.0 + ph);
+              transformed = rx(a) * (transformed - pv) + pv; }
+            // legs shuffle when it lurches, otherwise a slow weight shift
+            if (part > 3.5 && part < 5.5) { float sd = part < 4.5 ? 1.0 : -1.0; vec3 pv = vec3(0.0, 0.86, 0.0);
+              float a = sd * (lu * 0.42 * sin(uT * 6.5 + ph) + 0.05 * sin(uT * 1.2 + ph));
+              transformed = rx(a) * (transformed - pv) + pv; }
+            // head lolls
+            if (part > 0.5 && part < 1.5 || part > 5.5) { vec3 pv = vec3(0.0, 1.5, 0.0); transformed = rz(0.22 * sin(uT * 0.9 + ph)) * rx(0.18 + 0.1 * sin(uT * 1.3 + ph * 1.7)) * (transformed - pv) + pv; }
+            // the whole body hunches and sways
+            { vec3 pv = vec3(0.0, 0.0, 0.0); if (part < 3.5 || part > 5.5) { vec3 hp = vec3(0.0, 0.86, 0.0); transformed = rx(0.14 + lu * 0.1) * rz(0.07 * sin(uT * 1.1 + ph)) * (transformed - hp) + hp; } }`);
+      sh.fragmentShader = 'varying float vEye;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vec3(1.0, 0.95, 0.3) * vEye * 1.6;');
+    };
+    mat.customProgramCacheKey = () => 'zombie';
+    return mat;
+  },
+  buildZombies(S, i0, i1, rng) {
+    const shirts = [0x6b4d8a, 0x8a3b32, 0x3f5f7a, 0x7a6a42, 0x4a6b4a, 0x93805f, 0x5b3d5e];
+    const d = this.deck, list = [];
+    for (let i = i0 + 8; i < i1 - 8; i += 3) {
+      const p = S[i]; if (rng() > 0.5) continue;
+      const sg = rng() < 0.5 ? -1 : 1, L = sg * (6.7 + rng() * 1.1);
+      list.push({ i, home: L, L, s: p.s, yaw: 0, fall: 0, fallDir: 1, state: 'idle', t: 0, ph: rng() * TAU, lu: 0, up: 0, groan: 0, shirt: shirts[Math.floor(rng() * shirts.length)], scale: 0.92 + rng() * 0.2 });
+    }
+    this.zombies = list;
+    const geo = this.zombieGeo(), mat = this.zombieMat();
+    const im = new THREE.InstancedMesh(geo, mat, list.length); im.frustumCulled = false;
+    const zst = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4); geo.setAttribute('zst', zst);
+    const col = new THREE.Color(); list.forEach((z, k) => im.setColorAt(k, col.setHex(z.shirt)));
+    this.zMesh = im; this.zMat = mat; this.zst = zst; this.inner.add(im);
+    this.zm4 = new THREE.Matrix4(); this.zq = new THREE.Quaternion(); this.ze = new THREE.Euler(0, 0, 0, 'YXZ'); this.zv = new THREE.Vector3(); this.zs = new THREE.Vector3();
+    for (let k = 0; k < list.length; k++) this.placeZombie(list[k], k);
+    im.instanceMatrix.needsUpdate = true;
+  },
+  zPos(z) { // where a zombie stands (on the channel slope at its lateral offset)
+    const S = this.deck.samples, p = S[z.i];
+    return this.worldPt(p, z.L, this.floorDy(p, z.L));
+  },
+  placeZombie(z, k) {
+    const S = this.deck.samples, p = S[z.i], [x, y, zz] = this.zPos(z);
+    const yaw = z.state === 'idle' ? Math.atan2(p.tz * Math.sign(z.home), -p.tx * Math.sign(z.home)) : z.yaw;
+    z.yaw = yaw;
+    this.ze.set(-z.fall * 1.45 * z.fallDir, yaw, 0, 'YXZ'); this.zq.setFromEuler(this.ze);
+    this.zv.set(x, y - z.fall * 0.15, zz); this.zs.setScalar(z.scale);
+    this.zm4.compose(this.zv, this.zq, this.zs); this.zMesh.setMatrixAt(k, this.zm4);
+    this.zst.setXYZW(k, z.ph, z.lu, z.up, 0);
+  },
+  updateZombies(dt, game) {
+    if (!this.zMesh) return;
+    const cars = [game.player, ...Race.ai.map(a => a.veh)], S = this.deck.samples, P = game.player;
+    let dirty = false, groanCool = (this.groanCool = Math.max(0, (this.groanCool || 0) - dt));
+    for (let k = 0; k < this.zombies.length; k++) {
+      const z = this.zombies[k], p = S[z.i], [zx, zy, zz] = this.zPos(z);
+      let near = null, nd = 1e9;
+      for (const c of cars) { if (!c || !c.pos) continue; const dx = c.pos.x - zx, dz = c.pos.z - zz, dy = c.pos.y - zy; if (Math.abs(dy) > 6) continue; const dd = Math.hypot(dx, dz); if (dd < nd) { nd = dd; near = c; } }
+      const pd = Math.hypot(P.pos.x - zx, P.pos.z - zz);
+      if (pd > 90 && z.state === 'idle') continue; // far away: leave it be
+      const was = z.state;
+      if (z.state === 'down') {
+        z.t += dt; z.fall = Math.min(1, z.fall + dt * 4);
+        if (z.t > 9 && nd > 30) { z.state = 'rise'; z.t = 0; }
+      } else if (z.state === 'rise') {
+        z.t += dt; z.fall = Math.max(0, 1 - z.t / 1.6); if (z.fall <= 0) { z.state = 'back'; z.L = z.L; }
+      } else {
+        if (near && nd < 1.55 && near.speed > 3) { // clipped by a car: over it goes
+          z.state = 'down'; z.t = 0;
+          const fwd = (near.vx * Math.sin(z.yaw) + near.vz * Math.cos(z.yaw)); z.fallDir = fwd >= 0 ? -1 : 1;
+          if (near === P) { Sound.zombieHit && Sound.zombieHit(); game.shake = Math.max(game.shake || 0, 0.12); }
+        } else if (near && nd < 30) { // lurch toward the road, turning to face the car
+          if (z.state !== 'lurch' && near === P && groanCool <= 0 && pd < 26) { Sound.zombieGroan && Sound.zombieGroan(this.pan(game, zx, zz), pd); this.groanCool = groanCool = 1.1 + Math.random(); }
+          z.state = 'lurch'; z.lu = Math.min(1, z.lu + dt * 2); z.up = Math.min(1, z.up + dt * 1.5);
+          const target = Math.sign(z.home) * 4.9; z.L += clamp(target - z.L, -1.3 * dt, 1.3 * dt);
+          const want = Math.atan2(near.pos.x - zx, near.pos.z - zz); z.yaw += wrapAngle(want - z.yaw) * Math.min(1, dt * 3);
+        } else if (z.state === 'lurch' || z.state === 'back') { // wander back to the wall
+          z.state = Math.abs(z.L - z.home) < 0.05 ? 'idle' : 'back'; z.lu = Math.max(0, z.lu - dt); z.up = Math.max(0, z.up - dt * 0.7);
+          z.L += clamp(z.home - z.L, -0.8 * dt, 0.8 * dt);
+          const want = Math.atan2(p.tz * Math.sign(z.home), -p.tx * Math.sign(z.home)); z.yaw += wrapAngle(want - z.yaw) * Math.min(1, dt * 2);
+        }
+      }
+      if (z.state !== 'idle' || was !== 'idle') { this.placeZombie(z, k); dirty = true; }
+    }
+    if (dirty) { this.zMesh.instanceMatrix.needsUpdate = true; this.zst.needsUpdate = true; }
+  },
+  pan(game, x, z) { const c = game.camera, dx = x - c.position.x, dz = z - c.position.z, yaw = game.camYaw || 0; return clamp((dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(4, Math.hypot(dx, dz)), -1, 1) * -1; },
+
+  // ============================================================
+  //  per frame
+  // ============================================================
+  where(v) { // s along the cave deck if this car is on it (or null)
+    if (!v || v.onDeck !== this.deck) return null;
+    const p = this.deck.samples[v.deckI || 0]; return p ? p.s : null;
+  },
+  update(dt, game) {
+    if (!this.ready) return;
+    this.t += dt;
+    const P = game.player, cam = game.camera, s = this.where(P);
+    const target = s === null ? 0 : smooth(this.sE - 6, this.sE + 30, s) * (1 - smooth(this.sW - 30, this.sW + 6, s));
+    this.k += (target - this.k) * Math.min(1, dt * 2.5);
+    if (this.k < 0.002) this.k = 0;
+    this.inside = s !== null && s > this.sE - 2 && s < this.sW + 2;
+    // only draw the interior when it could be seen: near a mouth, or under the hill
+    const dh = Math.hypot(cam.position.x - HOLLOW.x, cam.position.z - HOLLOW.z);
+    const nearMouth = [this.sE, this.sW].some(sm => { const q = this.deck.samples.find(p => p.s >= sm) || this.deck.samples[0]; return Math.hypot(cam.position.x - q.x, cam.position.z - q.z) < 160; });
+    this.inner.visible = this.k > 0 || nearMouth || (dh < HOLLOW.r + 10 && cam.position.y < 30);
+    this.outer.visible = Math.hypot(cam.position.x - BAYOU.x, cam.position.z - BAYOU.z) - BAYOU.r < game.env.scene.fog.far * 0.85; // (past that it's all fog)
+    if (this.inner.visible) {
+      const pulse = 0.85 + 0.15 * Math.sin(this.t * 1.7);
+      this.gemMat.emissiveIntensity = 1.15 * pulse + 0.25; this.wallMat.userData.uGlow.value = pulse; this.floorMat.userData.uGlow.value = pulse;
+      this.haloMat.opacity = 0.45 + 0.15 * Math.sin(this.t * 2.3);
+      if (this.poolMat) this.poolMat.opacity = 0.65 + 0.12 * Math.sin(this.t * 1.1);
+      this.batMat.userData.t.value = this.t; this.zMat.userData.t.value = this.t;
+      // mist drifts
+      const a = this.mistPts.geometry.attributes.position;
+      this.mist.forEach((m, k) => { a.setXYZ(k, m.x + Math.sin(this.t * 0.2 * m.sp + m.ph) * 2.5, m.y + Math.sin(this.t * 0.37 + m.ph) * 0.3, m.z + Math.cos(this.t * 0.17 * m.sp + m.ph) * 2.5); });
+      a.needsUpdate = true;
+      // bats circle the Great Cavern
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1);
+      this.bats.forEach((b, k) => {
+        const th = this.t * b.sp + b.ph, x = b.cx + Math.cos(th) * b.r + Math.sin(this.t * 0.3 + b.ox) * 6, z = b.cz + Math.sin(th) * b.r, y = b.y + Math.sin(this.t * 1.3 + b.ph) * 1.5;
+        e.set(0, th + (b.sp > 0 ? 0 : Math.PI) + Math.PI / 2 * Math.sign(b.sp), Math.sin(this.t * 2 + b.ph) * 0.3); q.setFromEuler(e); v.set(x, y, z); m4.compose(v, q, sc); this.batMesh.setMatrixAt(k, m4);
+      });
+      this.batMesh.instanceMatrix.needsUpdate = true;
+      this.updateZombies(dt, game);
+    }
+    if (this.outer.visible && this.flames) this.flames.forEach((f, k) => { const fl = 0.85 + 0.25 * Math.sin(this.t * 13 + k * 2) * Math.sin(this.t * 7.3 + k); f.scale.set(1.8 * fl, 2.7 * fl, 1); });
+    if (this.outer.visible && this.wispPts) { const a = this.wispPts.geometry.attributes.position; this.wisps.forEach((w, k) => a.setXYZ(k, w.x + Math.sin(this.t * 0.31 + w.ph) * 5, w.y + Math.sin(this.t * 1.1 + w.ph * 2) * 0.5, w.z + Math.cos(this.t * 0.23 + w.ph) * 5)); a.needsUpdate = true; this.wispPts.material.opacity = 0.55 + 0.35 * Math.sin(this.t * 2.2); }
+    this.light(game);
+    Sound.cave && Sound.cave(this.k, dt);
+  },
+  // inside: no sun, dim green-black ambient, short dark fog, headlights on, reflections down, a shorter view
+  light(game) {
+    const env = game.env, L = env.L, k = this.k, cam = game.camera;
+    if (!L) return;
+    if (k <= 0 && !this.wasIn) return;
+    env.sun.intensity = L.sunI * (1 - k);
+    env.hemi.intensity = lerp(L.hemiI, 0.42, k);
+    env.hemi.color.set(L.hemiSky).lerp(this._c1 || (this._c1 = new THREE.Color(0x3f6a55)), k);
+    env.hemi.groundColor.set(L.hemiGround).lerp(this._c2 || (this._c2 = new THREE.Color(0x0a140e)), k);
+    const s = this.where(game.player), big = s === null ? 0 : caveSize(s).big;
+    const f = env.scene.fog; f.color.lerp(this._c3 || (this._c3 = new THREE.Color(0x06100b)), k); f.near = lerp(L.fogNear, lerp(7, 20, big), k); f.far = lerp(L.fogFar, lerp(125, 280, big), k);
+    if ('environmentIntensity' in env.scene) env.scene.environmentIntensity = lerp(1, 0.12, k);
+    Atmos.caveK = k;
+    const deep = k > 0.95 && this.inside, far = deep ? 330 : 3200; if (cam.far !== far) { cam.far = far; cam.updateProjectionMatrix(); }
+    const sm = game.renderer.shadowMap; if (sm.autoUpdate === deep) { sm.autoUpdate = !deep; sm.needsUpdate = true; } // no sun down here: stop redrawing its shadows
+    this.wasIn = k > 0;
+  },
+  // keep the chase camera inside the tube: off the walls, above the floor, under the roof
+  clampCam(v, P) {
+    if (!this.inside) return false;
+    const S = this.deck.samples, i0 = Math.max(0, (P.deckI || 0) - 30), i1 = Math.min(S.length - 1, (P.deckI || 0) + 30);
+    let b = S[i0], bd = Infinity; for (let i = i0; i <= i1; i++) { const q = S[i], dd = (q.x - v.x) ** 2 + (q.z - v.z) ** 2; if (dd < bd) { bd = dd; b = q; } }
+    const C = caveSize(b.s), nx = -b.tz, nz = b.tx, along = (v.x - b.x) * b.tx + (v.z - b.z) * b.tz;
+    let lat = (v.x - b.x) * nx + (v.z - b.z) * nz; const lim = lerp(this.deck.halfW - 0.6, C.hw - 4, C.big);
+    if (Math.abs(lat) > lim) lat = Math.sign(lat) * lim;
+    v.x = b.x + b.tx * along + nx * lat; v.z = b.z + b.tz * along + nz * lat;
+    const lo = b.y + this.floorDy(b, lat) + 1.1, rim = this.floorDy(b, this.deck.halfW + 0.6) + 0.4, hi = b.y + rim + (C.top - rim) * Math.sqrt(Math.max(0, 1 - (lat / C.hw) ** 2)) - 1.8;
+    v.y = clamp(v.y, lo, Math.max(lo + 0.5, hi));
+    return true;
   },
 };
 
@@ -5034,7 +5880,7 @@ class Vehicle {
     // vertical: terrain, or a bridge/ramp deck if we're on (or just above) one
     let gT = groundHeight(this.pos.x, this.pos.z); const mG = moonGround(this.pos.x, this.pos.z, this.pos.y); this.onMoon = mG > gT; if (this.onMoon) gT = mG;
     const dk = deckAt(this.pos.x, this.pos.z, this.pos.y);
-    let gY = dk && dk.y > gT ? dk.y : gT; this.onDeck = gY !== gT ? dk.deck : null;
+    let gY = dk && (dk.y > gT || underDeck(dk, this.pos.y)) ? dk.y : gT; this.onDeck = dk && gY === dk.y && gY !== gT ? dk.deck : null;
     this.onWater = false;
     if (orb && !this.onDeck) { const Lk = W.lake, wY = (Math.hypot(this.pos.x - Lk.x, this.pos.z - Lk.z) < Lk.r + 18) ? Lk.level : W.sea; if (wY > gY) { gY = wY; this.onWater = true; this.onMoon = false; } } // the orb skims across water
     if (this.onDeck) { this.deckI = dk.i; this.deckT = dk.t; this.onMoon = false; }
@@ -6125,6 +6971,70 @@ const Sound = {
     o.connect(og).connect(this.comp); o.start(t); o.stop(t + 0.47);
   },
   crash(k) { if (!this.play(k > 0.55 ? 'crash_heavy' : 'crash_light', Math.min(1, 0.35 + k))) this.thud(k); },
+  // ---------- Emerald Caverns: echo, a low drone, cave air and drips (k = how far in you are) ----------
+  cave(k, dt) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.cv) {
+      if (k <= 0) return;
+      const cv = this.cv = {};
+      // echo: a generated impulse response (a dark, damp 2 s tail) fed from the mix before the master
+      const len = Math.floor(ctx.sampleRate * 2.1), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); let lp = 0; for (let i = 0; i < len; i++) { const x = Math.random() * 2 - 1; lp += (x - lp) * 0.32; d[i] = lp * Math.exp(-i / (ctx.sampleRate * 0.5)) * (i < ctx.sampleRate * 0.012 ? 0 : 1); } }
+      cv.conv = ctx.createConvolver(); cv.conv.buffer = ir; cv.send = ctx.createGain(); cv.send.gain.value = 0; cv.wet = ctx.createGain(); cv.wet.gain.value = 0.9;
+      cv.send.connect(cv.conv).connect(cv.wet).connect(this.master);
+      // drone: two low sines a few Hz apart (a slow beat) plus a hollow band of moving air
+      cv.dg = ctx.createGain(); cv.dg.gain.value = 0; cv.dg.connect(this.master);
+      for (const f of [49, 52.5, 98.3]) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.value = f > 90 ? 0.25 : 0.6; o.connect(g).connect(cv.dg); o.start(); }
+      const n = ctx.createBufferSource(); n.buffer = this.nb; n.loop = true; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 0.9;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07; const lg = ctx.createGain(); lg.gain.value = 140; lfo.connect(lg).connect(bp.frequency); lfo.start();
+      cv.ag = ctx.createGain(); cv.ag.gain.value = 0; n.connect(bp).connect(cv.ag).connect(this.master); n.start();
+      cv.drip = 1; cv.linked = false;
+    }
+    const cv = this.cv;
+    // the echo is only wired in while you're in the cave (a convolver costs a little CPU even when quiet)
+    if (k > 0.01 && !cv.linked) { this.comp.connect(cv.send); cv.linked = true; }
+    cv.send.gain.setTargetAtTime(0.55 * k, t, 0.3); cv.dg.gain.setTargetAtTime(0.07 * k, t, 0.5); cv.ag.gain.setTargetAtTime(0.035 * k, t, 0.5);
+    if (k <= 0.001 && cv.linked) { cv.off = (cv.off || 0) + dt; if (cv.off > 3) { try { this.comp.disconnect(cv.send); } catch (e) { } cv.linked = false; cv.off = 0; } } else cv.off = 0;
+    // drips
+    if (k > 0.3 && (cv.drip -= dt) <= 0) {
+      cv.drip = 0.5 + Math.random() * 2.2;
+      const o = ctx.createOscillator(), g = ctx.createGain(), pn = ctx.createStereoPanner(), f0 = 1300 + Math.random() * 1400;
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 1.6, t + 0.05);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07 * k, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      pn.pan.value = Math.random() * 1.6 - 0.8; o.connect(g).connect(pn).connect(this.comp); o.start(t); o.stop(t + 0.25);
+    }
+  },
+  // a zombie's moan: a sliding sawtooth through two vowel formants, with a breathy rasp
+  zombieGroan(pan = 0, dist = 10) {
+    if (!this.ctx) return;
+    const v = 0.3 * clamp(1.15 - dist / 28, 0.25, 1);
+    if (this.play('zombie_groan', v * 2.4, 0.85 + Math.random() * 0.3, pan)) return;
+    const ctx = this.ctx, t = ctx.currentTime, dur = 0.9 + Math.random() * 0.7, f0 = 88 + Math.random() * 45;
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0 * 1.15, t); o.frequency.linearRampToValueAtTime(f0, t + dur * 0.3); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + dur);
+    const vib = ctx.createOscillator(); vib.frequency.value = 4.5 + Math.random() * 2; const vg = ctx.createGain(); vg.gain.value = f0 * 0.05; vib.connect(vg).connect(o.frequency);
+    const mixG = ctx.createGain(); mixG.gain.value = 1;
+    for (const [ff, q, gg] of [[560, 6, 1], [1180, 7, 0.55], [2500, 8, 0.18]]) { const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(ff * 1.1, t); f.frequency.linearRampToValueAtTime(ff * 0.85, t + dur); f.Q.value = q; const g = ctx.createGain(); g.gain.value = gg; o.connect(f).connect(g).connect(mixG); }
+    const n = ctx.createBufferSource(); n.buffer = this.nb; const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 900; nf.Q.value = 1.2; const ng = ctx.createGain(); ng.gain.value = 0.35; n.connect(nf).connect(ng).connect(mixG);
+    const env = ctx.createGain(); env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(v, t + 0.18); env.gain.setValueAtTime(v, t + dur * 0.6); env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const pn = ctx.createStereoPanner(); pn.pan.value = pan;
+    mixG.connect(env).connect(pn).connect(this.comp);
+    o.start(t); o.stop(t + dur + 0.05); vib.start(t); vib.stop(t + dur + 0.05); n.start(t); n.stop(t + dur + 0.05);
+  },
+  // clipping a zombie: a soft thud and a rattle of bones
+  zombieHit() {
+    if (!this.ctx) return;
+    if (this.play('zombie_hit', 0.7, 0.9 + Math.random() * 0.2)) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.18);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.4, t + 0.01); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); o.connect(og).connect(this.comp); o.start(t); o.stop(t + 0.25);
+    for (let k = 0; k < 7; k++) {
+      const tt = t + 0.04 + k * (0.03 + Math.random() * 0.04), s = ctx.createBufferSource(); s.buffer = this.nb;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800 + Math.random() * 2600; f.Q.value = 9;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.35, tt + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.045);
+      s.connect(f).connect(g).connect(this.comp); s.start(tt, Math.random()); s.stop(tt + 0.05);
+    }
+  },
   thunder() { if (!this.play('thunder', 0.8, 1, 0, this.ambBus)) this.thud(0.9); },
   thud(k) {
     if (!this.ctx) return;
@@ -6299,6 +7209,8 @@ const RACES = [
     namedGates: [{ deck: 'cloud2', f: 0.5, label: 'CLOUD 9 DINER' }] },
   { id: 'moondust', name: 'Moon Dust Rally', blurb: 'Low gravity, loose dust and crater hops round the Moon, then dive the re-entry chute back to Earth. Splashdown after the finish!', level: 'Hard', skill: 0.93,
     route: [{ deck: 'moontrack' }, { deck: 'chute' }] },
+  { id: 'cave', name: 'Cave Run', blurb: 'Over the Bayou Causeway to Gator Bayou, then down into the Emerald Caverns: glowing gems, a rock bridge over the chasm, and zombies lurching out of the dark. Out past the graveyard.', level: 'Hard', skill: 0.92,
+    route: [{ road: 'causeway', from: [-641, 3], to: 'deck:bayoucauseway' }, { deck: 'bayoucauseway' }, { road: 'bayou', from: 'prev', to: 'deck:caverns' }, { deck: 'caverns' }, { road: 'bayou2', from: 'prev', to: [-1105, -180] }] },
   { id: 'portal', name: 'Portal Rush', blurb: 'Up Sunset Canyon and back down the coast to Bayview through five portals: the whole field turns into Energy Orbs and back again, and the last dash to the flag is pure energy.', level: 'Medium', skill: 0.92,
     route: [{ road: 'canyon', from: [40, 365], to: [588, -230] }, { road: 'coast', from: [588, -230], to: [150, 515], dir: -1 }],
     portals: [1.5 / 12, 3.5 / 12, 5.5 / 12, 7.5 / 12, 9.5 / 12] }, // (between the checkpoints)
@@ -6455,7 +7367,7 @@ const Race = {
     const nearGap = (s) => R.some((q, i) => q.gap && s > R[Math.max(0, i - 6)].s - 4 && s < q.s + 30);
     for (let k = 1; k <= n; k++) {
       let s = k === n ? L - 2 : L * k / n; while (k < n && nearGap(s)) s += 12;
-      const p = routeAt(R, s); this.gates.push({ s, x: p.x, z: p.z, y: p.y, tx: p.tx, tz: p.tz, halfW: p.halfW, finish: k === n });
+      const p = routeAt(R, s), dk = deckAt(p.x, p.z, p.y + 1); this.gates.push({ s, x: p.x, z: p.z, y: p.y, tx: p.tx, tz: p.tz, halfW: dk && dk.deck.cave ? 4.4 : p.halfW, finish: k === n }); // (narrow gates in the cave: its walls curve up)
     }
     for (const ng of race.namedGates || []) {
       const d = Decks.list.find(q => q.id === ng.deck); if (!d) continue;
@@ -6653,7 +7565,7 @@ const Upgrades = {
   rivalScale() { return 1 + 0.005 * this.total(); },
 };
 
-const CHAMP_ORDER = ['lighthouse', 'canyon', 'gull', 'pass', 'viaduct', 'spiral', 'tour', 'cloudrun', 'moondust'];
+const CHAMP_ORDER = ['lighthouse', 'canyon', 'gull', 'pass', 'viaduct', 'spiral', 'cave', 'tour', 'cloudrun', 'moondust'];
 const CHAMP_POINTS = [10, 7, 5, 3];       // per finishing place
 const CHAMP_PARTS = [3, 2, 1, 1];         // upgrade points per finishing place
 const Champ = {
@@ -7533,7 +8445,7 @@ const Game = {
     playTitleVideo();
     this.last = performance.now();
     this.placeTimer = 0;
-    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input });
+    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input, Cave, Zones, caveSize, HOLLOW, BAYOU, inCaveHole });
     window.claude?.hot?.snapshot?.(() => ({ x: this.player.pos.x, z: this.player.pos.z, heading: this.player.heading, driving: this.driving }));
     if (saved.driving) this.startDriving(true);
     // first touch or key on the title screen wakes the audio so the title music can play
@@ -7680,6 +8592,7 @@ const Game = {
     }
     this.updateCamera(dt);
     this.atmosphere(dt);
+    Cave.update(this.paused ? 0 : dt, this); Zones.update(dt, this);
     Sky.update(dt, this); Orb.update(this.paused ? 0 : dt, this);
     World.anim.forEach(f => f(this.t));
     Atmos.update(dt, this);
@@ -7780,9 +8693,9 @@ const Game = {
     } else {
       const speedK = Math.min(1, P.speed / 50);
       const nf = P.nosFire || 0;
-      const dist = M.dist * (1 + speedK * 0.12 + nf * 0.09), height = M.height;
+      const dist = M.dist * (1 + speedK * 0.12 + nf * 0.09) * (1 - Cave.k * 0.14), height = M.height;
       const want = new THREE.Vector3(P.pos.x - fx * dist, P.pos.y + height, P.pos.z - fz * dist);
-      const gy = surfaceHeight(want.x, want.z, P.pos.y + 6.5) + 1.0; if (want.y < gy) want.y = gy; // (looks higher up for decks, so a steep chute behind you lifts the camera)
+      if (!Cave.clampCam(want, P)) { const gy = surfaceHeight(want.x, want.z, P.pos.y + 6.5) + 1.0; if (want.y < gy) want.y = gy; } // (looks higher up for decks, so a steep chute behind you lifts the camera; in the cave it stays in the tunnel)
       const kp = this.snapCam ? 1 : 1 - Math.exp(-dt * 10);
       this.camPos.lerp(want, kp); this.snapCam = false;
       cam.position.copy(this.camPos);
