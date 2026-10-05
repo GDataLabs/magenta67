@@ -1,4 +1,9 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
+const M67_BUILD = 'edbca01342';
+{ const m = document.querySelector('meta[name="m67-build"]');
+  if (!m || m.content !== M67_BUILD) { let tried = false; try { tried = sessionStorage.getItem('m67-fresh') === M67_BUILD; sessionStorage.setItem('m67-fresh', M67_BUILD); } catch (e) { }
+    if (!tried) { location.replace(location.pathname + '?v=' + M67_BUILD + location.hash); throw new Error('Loading the new version of Magenta 67'); } }
+  else if (/[?&]v=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash); }
 const ASSET_DATA = {"moon_albedo": "assets/moon_albedo.jpg", "moon_height": "assets/moon_height.jpg"};
 const SFX_DATA = {"engine_idle": "sfx/engine_idle.wav", "engine_low_on": "sfx/engine_low_on.wav", "engine_mid_on": "sfx/engine_mid_on.wav", "engine_high_on": "sfx/engine_high_on.wav", "engine_top_on": "sfx/engine_top_on.wav", "engine_mid_off": "sfx/engine_mid_off.wav", "engine_high_off": "sfx/engine_high_off.wav", "tyre_squeal": "sfx/tyre_squeal.wav", "gravel": "sfx/gravel.wav", "shift": "sfx/shift.mp3", "backfire": "sfx/backfire.mp3", "nos_ignite": "sfx/nos_ignite.mp3", "nos_loop": "sfx/nos_loop.wav", "turbo_spool": "sfx/turbo_spool.wav", "turbo_bov": "sfx/turbo_bov.mp3", "crash_heavy": "sfx/crash_heavy.mp3", "crash_light": "sfx/crash_light.mp3", "land": "sfx/land.mp3", "horn": "sfx/horn.mp3", "camera": "sfx/camera.mp3", "pickup": "sfx/pickup.mp3", "checkpoint": "sfx/checkpoint.mp3", "wind": "sfx/wind.wav", "surf": "sfx/surf.wav", "rain": "sfx/rain.wav", "gulls": "sfx/gulls.mp3", "birds": "sfx/birds.wav", "thunder": "sfx/thunder.mp3", "cheer": "sfx/cheer.mp3", "music_title": "sfx/music_title.mp3", "music_race": "sfx/music_race.mp3", "vo_first": "sfx/vo_first.mp3", "vo_second": "sfx/vo_second.mp3", "vo_third": "sfx/vo_third.mp3", "vo_fourth": "sfx/vo_fourth.mp3", "vo_record": "sfx/vo_record.mp3", "vo_champion": "sfx/vo_champion.mp3", "orb_hum": "sfx/orb_hum.wav", "orb_transform": "sfx/orb_transform.mp3"};
 const SFX_META = {"engine_idle": {"rpm": 749, "gain": 0.75}, "engine_low_on": {"rpm": 1772, "gain": 0.85}, "engine_mid_on": {"rpm": 4272, "gain": 1.0}, "engine_high_on": {"rpm": 5854, "gain": 1.05}, "engine_top_on": {"rpm": 6506, "gain": 1.1}, "engine_mid_off": {"rpm": 3270, "gain": 0.75}, "engine_high_off": {"rpm": 6555, "gain": 0.8}, "tyre_squeal": {"gain": 1}, "gravel": {"gain": 1}, "shift": {"gain": 1}, "backfire": {"gain": 1}, "nos_ignite": {"gain": 1}, "nos_loop": {"gain": 1}, "turbo_spool": {"gain": 1, "hz": 6568}, "turbo_bov": {"gain": 1}, "crash_heavy": {"gain": 1}, "crash_light": {"gain": 1}, "land": {"gain": 1}, "horn": {"gain": 1}, "camera": {"gain": 1}, "pickup": {"gain": 1.5}, "checkpoint": {"gain": 1}, "wind": {"gain": 1}, "surf": {"gain": 1}, "rain": {"gain": 1}, "gulls": {"gain": 1}, "birds": {"gain": 1}, "thunder": {"gain": 1}, "cheer": {"gain": 1}, "music_title": {"gain": 1}, "music_race": {"gain": 1}, "vo_first": {"gain": 1}, "vo_second": {"gain": 1}, "vo_third": {"gain": 1}, "vo_fourth": {"gain": 1}, "vo_record": {"gain": 1}, "vo_champion": {"gain": 1}, "orb_hum": {"gain": 1}, "orb_transform": {"gain": 1}};
@@ -7056,7 +7061,7 @@ const UI = {
     $('p-gfx').onclick = () => { game.setQuality(game.quality === 'high' ? 'balanced' : 'high'); this.syncToggles(); };
     $('p-tod').onclick = () => { const K = Object.keys(LIGHTING); game.setLighting(K[(K.indexOf(game.env.preset) + 1) % K.length]); this.syncToggles(); };
     $('p-wx').onclick = () => { const K = Object.keys(WEATHER); game.setWeather(K[(K.indexOf(game.env.wx) + 1) % K.length]); this.syncToggles(); };
-    $('p-tch').onclick = () => { this.setTouch(!document.body.classList.contains('touch')); this.syncToggles(); };
+    $('p-tch').onclick = () => { const on = !document.body.classList.contains('touch'); this.touchOff = !on; this.setTouch(on); this.syncToggles(); };
     $('p-steer').onclick = () => { Input.setSteerMode(Input.steerMode === 'wheel' ? 'arrows' : 'wheel'); this.syncToggles(); };
     $('pr-go').onclick = () => game.openRaceCard();
     $('rc-go').onclick = () => { $('racecard').hidden = true; game.paused = false; Race.start(game.pendingRace, game); this.raceMode(true); };
@@ -7073,7 +7078,11 @@ const UI = {
     $('p-ghost').onclick = () => { Ghost.setOn(!Ghost.on); this.syncToggles(); };
     $('p-mirror').onclick = () => { Mirror.setOn(!Mirror.on); this.syncToggles(); };
     Input.bindTouch($('touch'));
-    if (matchMedia('(pointer: coarse)').matches) this.setTouch(true);
+    // Touch controls (and the phone layout: map top-left, wheel, pedals) only on real touch screens: phones and tablets
+    // (no hover, finger pointer). A desktop keeps its own layout; a touchscreen laptop switches over the first time the
+    // screen itself is touched, unless touch controls were turned off in the pause menu.
+    if (matchMedia('(hover: none) and (pointer: coarse)').matches) this.setTouch(true);
+    addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' && !this.touchOff && !document.body.classList.contains('touch')) { this.setTouch(true); this.syncToggles(); } }, { passive: true });
     Fullscreen.init(this);
     $('rot-ok').onclick = () => document.body.classList.add('upright-ok');
     this.buildRaceList();

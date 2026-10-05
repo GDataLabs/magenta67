@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="edbca01342"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
 
 <meta name="theme-color" content="#14213d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -164,10 +164,14 @@ body.touch #edrift { top: calc(52px + env(safe-area-inset-top, 0px)); }
 #touch .tw.down .w-edge { stroke: var(--magenta-hi); }
 body:not(.arrows) #t-left, body:not(.arrows) #t-right, body.arrows #t-wheel { display: none; }
 body:not(.touch) #p-steer { display: none; }
-/* the map lives on the left on phones, out from under the right thumb (pedals, NOS, drift) */
-body.touch #minimap { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; width: 112px; height: 112px; }
-body.touch #place { left: calc(136px + env(safe-area-inset-left, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); padding: 7px 12px 9px; }
-body.touch #place .n { font-size: 20px; }
+/* phones only: the map moves to the top-left, out from under the thumbs (wheel bottom-left; pedals, NOS, drift right).
+   Desktops never get this; big touch screens (tablets, touch laptops) keep the desktop map and put the wheel beside it. */
+@media (max-width: 900px), (max-height: 520px) {
+  body.touch #minimap { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; width: 112px; height: 112px; }
+  body.touch #place { left: calc(136px + env(safe-area-inset-left, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); padding: 7px 12px 9px; }
+  body.touch #place .n { font-size: 20px; }
+}
+@media (min-width: 901px) and (min-height: 521px) { #touch .tw { left: calc(200px + env(safe-area-inset-left, 0px)); bottom: 16px; } }
 html, body, #app, #app canvas, #hud, #touch { touch-action: none; -webkit-touch-callout: none; }
 body.touch #gauges { right: 50%; transform: translateX(50%); bottom: calc(6px + env(safe-area-inset-bottom, 0px)); width: 210px; height: 118px; }
 body.touch #nos { right: 50%; transform: translateX(50%); bottom: calc(126px + env(safe-area-inset-bottom, 0px)); width: 180px; padding: 5px 9px 6px; }
@@ -428,5 +432,5 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js"></script>
+<script type="module" src="game.js?v=edbca01342"></script>
 </body></html>
