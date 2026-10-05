@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
-const M67_BUILD = '7dbacc2b4a';
+const M67_BUILD = '31bee262c9';
 { const m = document.querySelector('meta[name="m67-build"]');
   if (!m || m.content !== M67_BUILD) { let tried = false; try { tried = sessionStorage.getItem('m67-fresh') === M67_BUILD; sessionStorage.setItem('m67-fresh', M67_BUILD); } catch (e) { }
     if (!tried) { location.replace(location.pathname + '?v=' + M67_BUILD + location.hash); throw new Error('Loading the new version of Magenta 67'); } }
@@ -2259,67 +2259,74 @@ const CAVE_DEF = {
   cavern: [322, 400], // the Great Cavern: the middle pass under the top of the hill opens right out
 };
 
-// ---------- cave centreline (planar, with floor heights) ----------
-let _caveLine = null;
-function caveLine() {
-  if (_caveLine) return _caveLine;
-  const v = CAVE_DEF.pts.map(p => new THREE.Vector3(p[0], p[2], p[1]));
+// ---------- underground tubes (v13.3: the Emerald Caverns and Mount Ember's lava tube share this) ----------
+// A tube def: pts [x, z, floorY] (the first two and last two are open-air approaches, [2] and [n-3] the mouths),
+// plus size(s) → { hw, top, big }: how wide and tall the bore is at distance s along it.
+CAVE_DEF.size = (s) => caveSize(s);
+function tubeLine(def) {
+  if (def._line) return def._line;
+  const v = def.pts.map(p => new THREE.Vector3(p[0], p[2], p[1]));
   const c = new THREE.CatmullRomCurve3(v, false, 'centripetal');
   const n = Math.round(c.getLength() / 2.5), P = c.getSpacedPoints(n);
   const S = P.map((q, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(n, i + 1)]; let tx = b.x - a.x, tz = b.z - a.z; const l = Math.hypot(tx, tz) || 1; return { x: q.x, y: q.y, z: q.z, tx: tx / l, tz: tz / l, s: 0 }; });
   let s = 0; S.forEach((p, i) => { if (i) s += Math.hypot(p.x - S[i - 1].x, p.z - S[i - 1].z); p.s = s; });
   const near = (pt) => { let b = 0, bd = Infinity; S.forEach((p, i) => { const d = (p.x - pt[0]) ** 2 + (p.z - pt[1]) ** 2; if (d < bd) { bd = d; b = i; } }); return S[b].s; };
-  const N = CAVE_DEF.pts.length;
-  _caveLine = { S, length: s, sE: near(CAVE_DEF.pts[2]), sW: near(CAVE_DEF.pts[N - 3]) };
-  return _caveLine;
+  const N = def.pts.length;
+  return (def._line = { S, length: s, sE: near(def.pts[2]), sW: near(def.pts[N - 3]) });
 }
-// where the mouths are along the cave deck's own samples
+function caveLine() { return tubeLine(CAVE_DEF); }
+// where the mouths are along an underground deck's own samples
 function caveDeckMouths(d) {
   if (d._mouths) return d._mouths;
+  const def = d.tubeDef || CAVE_DEF;
   const at = (pt) => { let b = d.samples[0], bd = Infinity; for (const q of d.samples) { const dd = (q.x - pt[0]) ** 2 + (q.z - pt[1]) ** 2; if (dd < bd) { bd = dd; b = q; } } return b.s; };
-  const N = CAVE_DEF.pts.length;
-  return (d._mouths = { sE: at(CAVE_DEF.pts[2]), sW: at(CAVE_DEF.pts[N - 3]) });
+  const N = def.pts.length;
+  return (d._mouths = { sE: at(def.pts[2]), sW: at(def.pts[N - 3]) });
 }
 // how tall/wide the cave is at s (the Great Cavern opens right out)
 function caveSize(s) {
   const [a, b] = CAVE_DEF.cavern, big = smooth(a - 30, a + 10, s) * (1 - smooth(b - 10, b + 30, s));
   return { hw: lerp(10.5, 24, big), top: lerp(12.5, 26, big), big };
 }
-// ---------- terrain over the cave: the hill must cover the tunnel everywhere except at the mouths ----------
-let _cover = null;
-function caveCoverGrid() {
-  if (_cover) return _cover;
-  const L = caveLine(), S = L.S, cs = 2.5;
+// ---------- terrain over a tube: the hill must cover it everywhere except at the mouths ----------
+function tubeCoverGrid(def) {
+  if (def._cover) return def._cover;
+  const L = tubeLine(def), S = L.S, cs = 2.5;
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const p of S) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
   x0 -= 40; z0 -= 40; x1 += 40; z1 += 40;
   const nx = Math.ceil((x1 - x0) / cs) + 1, nz = Math.ceil((z1 - z0) / cs) + 1, G = new Float32Array(nx * nz).fill(-1e9);
+  const pad = def.mouthPad ?? 9;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = x0 + i * cs, z = z0 + j * cs; let want = -1e9;
     for (const p of S) {
-      if (p.s < L.sE + 9 || p.s > L.sW - 9) continue; // the mouths stay open (terrain holes + rock portals there)
-      const d = Math.hypot(x - p.x, z - p.z), C = caveSize(p.s), r = C.hw + 7;
+      if (p.s < L.sE + pad || p.s > L.sW - pad) continue; // the mouths stay open (terrain holes + rock portals there)
+      const d = Math.hypot(x - p.x, z - p.z), C = def.size(p.s), r = C.hw + 7;
       if (d > r + 14) continue;
       const need = p.y + C.top + 4.5 - smooth(r, r + 14, d) * 20;
       if (need > want) want = need;
     }
     G[j * nx + i] = want;
   }
-  _cover = { G, x0, z0, cs, nx, nz };
-  return _cover;
+  return (def._cover = { G, x0, z0, cs, nx, nz });
 }
-function caveCover(x, z) {
-  const C = caveCoverGrid(), fi = (x - C.x0) / C.cs, fj = (z - C.z0) / C.cs;
+function tubeCover(def, x, z) {
+  const C = tubeCoverGrid(def), fi = (x - C.x0) / C.cs, fj = (z - C.z0) / C.cs;
   if (fi < 0 || fj < 0 || fi >= C.nx - 1 || fj >= C.nz - 1) return -1e9;
   const i = Math.floor(fi), j = Math.floor(fj), u = fi - i, v = fj - j, G = C.G, n = C.nx;
   return lerp(lerp(G[j * n + i], G[j * n + i + 1], u), lerp(G[(j + 1) * n + i], G[(j + 1) * n + i + 1], u), v);
 }
-// terrain holes where the tunnel meets the hillside (a heightfield can't overhang; rock portals cover these)
+function caveCover(x, z) { return tubeCover(CAVE_DEF, x, z); }
+// terrain holes where a tube meets the hillside (a heightfield can't overhang; rock portals cover these)
 function caveHoles() {
-  const L = caveLine(), out = [];
-  for (const [s, dir] of [[L.sE, 1], [L.sW, -1]]) {
-    const p = L.S.reduce((b, q) => Math.abs(q.s - (s + dir * 4)) < Math.abs(b.s - (s + dir * 4)) ? q : b, L.S[0]);
-    out.push({ x: p.x, z: p.z, tx: p.tx, tz: p.tz, hl: 8, hw: caveSize(s).hw + 2.5 }); // from 4 m outside the mouth to 12 m in
+  const out = [];
+  for (const def of [CAVE_DEF, LAVA_TUBE]) {
+    if (def.off) continue;
+    const L = tubeLine(def);
+    for (const [s, dir] of [[L.sE, 1], [L.sW, -1]]) {
+      const p = L.S.reduce((b, q) => Math.abs(q.s - (s + dir * 4)) < Math.abs(b.s - (s + dir * 4)) ? q : b, L.S[0]);
+      out.push({ x: p.x, z: p.z, tx: p.tx, tz: p.tz, hl: 8, hw: def.size(s).hw + 2.5, def }); // from 4 m outside the mouth to 12 m in
+    }
   }
   return out;
 }
@@ -2341,13 +2348,97 @@ const Zones = {
   },
 };
 
+// ---------- Frostpeak Isle (north, v13.2): snowfields round a frozen lake, a big white peak to the north-west ----------
+const FROST = { x: -40, z: -1170, r: 290 };
+const GLASS = { x: -60, z: -1140, r: 100, y: 12 };           // Glass Lake: frozen solid (ice level y)
+const FROSTPEAK = { x: -180, z: -1345, r: 140, h: 138 };
+const FROST_BLUFF = { x: 38, z: -918, r: 92, y: 28.5 };      // the south bluff where Frost Bridge lands
+function inGlass(x, z) { return Math.hypot(x - GLASS.x, z - GLASS.z) < GLASS.r; }
+function frostHeight(x, z, dRoad) {
+  let h = 13 + 6 * Noise.fbm(x / 140 - 4, z / 140 + 2, 3) + 2.4 * Noise.fbm(x / 34 + 8, z / 34, 2);
+  // the bluff over the strait (Frost Bridge lands here), falling away to the lake
+  const dB = Math.hypot(x - FROST_BLUFF.x, z - FROST_BLUFF.z);
+  h = lerp(h, FROST_BLUFF.y + 0.8 * Noise.simplex(x / 25, z / 25), smooth(FROST_BLUFF.r, FROST_BLUFF.r - 40, dB));
+  // Frostpeak: a big craggy white peak
+  const dP = Math.hypot(x - FROSTPEAK.x, z - FROSTPEAK.z) + 14 * Noise.fbm(x / 70, z / 70 + 5, 3);
+  if (dP < FROSTPEAK.r) {
+    const ridge = 1 - Math.abs(Noise.fbm(x / 60 - 3, z / 60 + 11, 4));
+    h = Math.max(h, h * 0.5 + FROSTPEAK.h * Math.pow(smooth(FROSTPEAK.r, 0, dP), 1.5) + 26 * Math.pow(ridge, 2) * smooth(FROSTPEAK.r, FROSTPEAK.r * 0.45, dP) * smooth(10, 40, dRoad));
+  }
+  // Glass Lake: dead flat ice, a flat snowy shore round it
+  const dL = Math.hypot(x - GLASS.x, z - GLASS.z);
+  h = lerp(h, GLASS.y, smooth(GLASS.r + 42, GLASS.r + 20, dL));
+  if (dL < GLASS.r + 14) h = GLASS.y;
+  return h;
+}
+
+// ---------- Cinder Isle (south, v13.3): Mount Ember, a live volcano with a lava river and a crater lake of lava ----------
+// It sits straight out to sea off the south coast, in line with the Moon's re-entry chute: Cinder Causeway leaves the
+// Coast Highway right under the end of the chute, so the kicker throws you out onto the causeway. The causeway lands
+// on a bluff on the north shore; Ember Road spirals twice round the cone to a terrace cut through the rim, and there
+// the road goes into the mountain: the Lava Tube corkscrews down round a glowing magma chamber and comes out at the
+// foot of the back (south) side, where the lava river pours down to the sea.
+// (Everything on the island is laid out relative to EMBER, the crater.)
+const EMBER = { x: -105, z: 1142, h: 120, rim: 50, base: 205, lake: 28, lakeY: 72 }; // cone, crater rim radius, lava lake radius/level
+const CINDER = { x: EMBER.x - 30, z: EMBER.z - 30, r: 270 };
+const CINDER_LAND = { x: EMBER.x - 65, z: EMBER.z - 265, r: 72, y: 14 };            // the north bluff where Cinder Causeway lands
+const EMBER_SPIRAL = { a0: -1.75, r0: 198, r1: 60, laps: 2, n: 52 };                     // Ember Road: two laps round the cone, outside in
+const LAVA_A = 1.5; // the lava river runs down the back (south) face at this angle from the crater
+const EMBER_LOOK = { a: EMBER_SPIRAL.a0 + 0.14, w: 0.26, y: 95 }; // the summit terrace at the top of Ember Road (angle from the crater, half-width, level)
+// The Lava Tube [dx, dz, floorY] from the crater: from the summit terrace (the end of Ember Road) into the rim, a corkscrew 1¼ turns
+// round the magma chamber under the crater, then out under both laps of Ember Road to the foot of the south face.
+// (Laid out against the road: it passes 40+ m under the upper lap and ~4 m of rock under the lower one.)
+const LAVA_TUBE = {
+  hw: 7.4, flat: 4.6, k: 0.32, mouthPad: 9,
+  size: () => ({ hw: 10.5, top: 11, big: 0 }),
+  chamber: { r: 43, y0: 22, y1: 66, dome: 71 },
+  pts: [[-10.7, -59.0, 92.0], [-1.7, -58.8, 92.4], [15.2, -54.9, 90.6], [44.6, -37.1, 85.7], [58.8, -5.1, 80.7], [50.8, 29.0, 75.6], [24.4, 51.2, 70.7], [-8.8, 53.9, 65.9], [-36.9, 38.3, 61.3], [-52.2, 10.4, 56.8], [-50.1, -21.7, 52.1], [-29.9, -48.2, 47.4], [3.0, -58.4, 42.4], [36.1, -46.7, 37.4], [55.3, -17.5, 32.4], [53.5, 16.5, 27.5], [69.9, 42.9, 23.4], [78.0, 80.3, 18.3], [73.3, 119.3, 13.2], [63.2, 153.5, 8.4], [56.3, 175.2, 6.6], [56.8, 189.7, 5.0], [60.6, 196.9, 4.4], [65.0, 203.9, 4.0]].map(([dx, dz, y]) => [EMBER.x + dx, EMBER.z + dz, y]),
+};
+// the lava river's centreline: from a fissure just below the rim down to the sea, meandering
+let _lava = null;
+function lavaLine() {
+  if (_lava) return _lava;
+  const pts = [];
+  for (let r = 62; r <= 300; r += 6) { const a = LAVA_A + 0.16 * Math.sin(r / 38) + 0.05 * Math.sin(r / 11); pts.push({ x: EMBER.x + Math.cos(a) * r, z: EMBER.z + Math.sin(a) * r, r }); }
+  return (_lava = pts);
+}
+function lavaDist(x, z) {
+  if (Math.hypot(x - EMBER.x, z - EMBER.z) < 55) return 999;
+  let best = 999; for (const p of lavaLine()) { const d = (x - p.x) ** 2 + (z - p.z) ** 2; if (d < best) best = d; } return Math.sqrt(best);
+}
+function emberCone(x, z) {
+  const d = Math.hypot(x - EMBER.x, z - EMBER.z) + 6 * Noise.fbm(x / 50 + 2, z / 50, 3);
+  if (d > EMBER.base) return 0;
+  const a = Math.atan2(z - EMBER.z, x - EMBER.x);
+  let h = d >= EMBER.rim ? 8 + (EMBER.h - 8) * Math.pow(1 - (d - EMBER.rim) / (EMBER.base - EMBER.rim), 1.35) : EMBER.h - (EMBER.h - EMBER.lakeY + 1) * smooth(EMBER.rim, EMBER.lake, d);
+  if (d >= EMBER.rim) h -= 3.5 * Math.abs(Math.sin(a * 9 + 2 * Noise.simplex(d / 40, a))) * smooth(EMBER.rim, EMBER.rim + 30, d) * smooth(EMBER.base, EMBER.base - 40, d); // erosion gullies down the flanks
+  // the lookout: a flat terrace cut through the rim where Ember Road ends, so you can see down into the crater
+  const dd = Math.hypot(x - EMBER.x, z - EMBER.z), da = Math.abs(wrapAngle(a - EMBER_LOOK.a));
+  const nf = smooth(EMBER_LOOK.w + 0.24, EMBER_LOOK.w, da) * smooth(EMBER.rim + 28, EMBER.rim + 14, dd);
+  if (nf > 0) h = lerp(h, Math.min(h, EMBER_LOOK.y + 0.25 * Noise.simplex(x / 9, z / 9)), nf);
+  return h;
+}
+function cinderHeight(x, z, dRoad) {
+  let h = 5 + 3 * Noise.fbm(x / 120 + 7, z / 120 - 3, 3) + 1.2 * Noise.fbm(x / 26, z / 26 + 9, 2);
+  const dL = Math.hypot(x - CINDER_LAND.x, z - CINDER_LAND.z);
+  h = lerp(h, CINDER_LAND.y + 0.6 * Noise.simplex(x / 20, z / 20), smooth(CINDER_LAND.r, CINDER_LAND.r - 32, dL));
+  const cone = emberCone(x, z); if (cone > 0) h = Math.max(h, cone);
+  const dv = lavaDist(x, z); if (dv < 14) h -= 3.2 * smooth(14, 5, dv) * smooth(6, 20, dRoad); // the lava runs in a channel (the road bridges it)
+  if (!LAVA_TUBE.off) { const cov = tubeCover(LAVA_TUBE, x, z); if (cov > h) h = cov; } // the mountain covers the lava tube
+  return h;
+}
+
 // ---------- island shapes ----------
-function isleNear(x, z) { return Math.hypot(x - BAYOU.x, z - BAYOU.z) < BAYOU.r + 70; }
+function isleNear(x, z) { return Math.hypot(x - BAYOU.x, z - BAYOU.z) < BAYOU.r + 70 || Math.hypot(x - FROST.x, z - FROST.z) < FROST.r + 70 || Math.hypot(x - CINDER.x, z - CINDER.z) < CINDER.r + 70; }
 function isleParams(x, z) {
-  if (!isleNear(x, z)) return { any: false, bayou: 0 };
+  if (!isleNear(x, z)) return { any: false, bayou: 0, frost: 0, cinder: 0 };
   const dB = Math.hypot(x - BAYOU.x, z - BAYOU.z) + 42 * Noise.fbm(x / 210 - 3, z / 210 + 7, 3);
   const bayou = smooth(BAYOU.r + 22, BAYOU.r - 40, dB);
-  return { any: bayou > 0, bayou };
+  const dF = Math.hypot(x - FROST.x, z - FROST.z) + 38 * Noise.fbm(x / 200 + 6, z / 200 - 9, 3);
+  const frost = Math.max(smooth(FROST.r + 20, FROST.r - 45, dF), smooth(FROST_BLUFF.r + 10, FROST_BLUFF.r - 30, Math.hypot(x - FROST_BLUFF.x, z - FROST_BLUFF.z)));
+  const dC = Math.hypot(x - CINDER.x, z - CINDER.z) + 34 * Noise.fbm(x / 190 - 5, z / 190 + 4, 3);
+  const cinder = Math.max(smooth(CINDER.r + 20, CINDER.r - 45, dC), smooth(CINDER_LAND.r + 10, CINDER_LAND.r - 30, Math.hypot(x - CINDER_LAND.x, z - CINDER_LAND.z)));
+  return { any: bayou > 0 || frost > 0 || cinder > 0, bayou, frost, cinder };
 }
 function hollowHill(x, z) {
   const dH = Math.hypot(x - HOLLOW.x, z - HOLLOW.z) + 11 * Noise.fbm(x / 60 + 4, z / 60 - 2, 3);
@@ -2377,6 +2468,34 @@ function mainNear(x, z) {
 function seaFloor(x, z) { return -9 + 2 * Noise.simplex(x / 90, z / 90); }
 
 // ---------- colours ----------
+const CINDER_PAL = { basalt: new THREE.Color(0x2e2b2e), ash: new THREE.Color(0x5a5452), ashL: new THREE.Color(0x7b7470), rust: new THREE.Color(0x6e3a26), sulfur: new THREE.Color(0xc9b13e), glow: new THREE.Color(0xff5a14), crust: new THREE.Color(0x1a1517), scrub: new THREE.Color(0x4b5233) };
+function cinderColor(x, z, h, slope, dRoad, w, out) {
+  const n1 = Noise.simplex(x / 30 - 6, z / 30), n2 = Noise.simplex(x / 7 + 11, z / 7);
+  const c = CINDER_PAL.ash.clone().lerp(CINDER_PAL.basalt, 0.45 + 0.35 * n1).lerp(CINDER_PAL.ashL, Math.max(0, n2) * 0.25);
+  if (h < 12 && h > 1.5) c.lerp(CINDER_PAL.scrub, Math.max(0, Noise.fbm(x / 60, z / 60 + 2, 2)) * 0.8 * smooth(12, 6, h)); // a little scrub on the low ground
+  if (slope > 0.8) c.lerp(CINDER_PAL.basalt, 0.5);
+  const d = Math.hypot(x - EMBER.x, z - EMBER.z);
+  if (d < EMBER.rim + 25) c.lerp(CINDER_PAL.rust.clone().lerp(CINDER_PAL.sulfur, Math.max(0, Noise.simplex(x / 9, z / 9 + 5)) * 0.8), smooth(EMBER.rim + 25, EMBER.rim, d) * 0.75); // scorched, sulphurous rim
+  if (d < EMBER.lake + 10) c.lerp(CINDER_PAL.glow, smooth(EMBER.lake + 10, EMBER.lake, d) * 0.7);
+  const dv = lavaDist(x, z); if (dv < 16) c.lerp(CINDER_PAL.crust, smooth(16, 7, dv) * 0.8).lerp(CINDER_PAL.glow, smooth(9, 4, dv) * 0.55 * smooth(10, 22, dRoad)); // cooled crust, glowing near the flow
+  if (h < 1.8) c.lerp(CINDER_PAL.crust, smooth(1.8, 0.4, h) * 0.8); // black sand
+  if (h < -0.45) c.copy(CINDER_PAL.crust).lerp(PAL.seabed, smooth(-0.6, -6, h));
+  if (dRoad < 8.5) c.lerp(CINDER_PAL.ashL, smooth(8.5, 5.5, dRoad) * 0.6);
+  out.lerp(c, w);
+  return out;
+}
+const FROST_PAL = { snowA: new THREE.Color(0xf3f6fb), snowB: new THREE.Color(0xd5e0ee), snowC: new THREE.Color(0xe9eef6), rock: new THREE.Color(0x6f7783), rockD: new THREE.Color(0x565d69), shore: new THREE.Color(0x59616c), packed: new THREE.Color(0xc9d1db), ice: new THREE.Color(0xbfe2f2) };
+function frostColor(x, z, h, slope, dRoad, w, out) {
+  const n1 = Noise.simplex(x / 26 + 3, z / 26), n2 = Noise.simplex(x / 7 - 9, z / 7);
+  const c = FROST_PAL.snowA.clone().lerp(FROST_PAL.snowB, Math.max(0, n1) * 0.55 + smooth(0.25, 0.6, slope) * 0.35).lerp(FROST_PAL.snowC, Math.max(0, n2) * 0.25);
+  if (slope > 0.7) c.lerp(FROST_PAL.rock.clone().lerp(FROST_PAL.rockD, 0.5 + 0.5 * n2), smooth(0.7, 1.15, slope) * 0.85); // bare rock on the crags
+  if (h < 2.2) c.lerp(FROST_PAL.shore, smooth(2.2, 0.6, h)); // a dark icy shingle at the sea
+  if (h < -0.45) c.copy(FROST_PAL.shore).lerp(PAL.seabed, smooth(-0.6, -6, h));
+  if (inGlass(x, z)) c.copy(FROST_PAL.ice);
+  if (dRoad < 8.5) c.lerp(FROST_PAL.packed, smooth(8.5, 5.5, dRoad) * 0.8);
+  out.lerp(c, w);
+  return out;
+}
 const ISLE_PAL = {
   marshA: new THREE.Color(0x5f6d3a), marshB: new THREE.Color(0x4c5a31), marshC: new THREE.Color(0x77753f), mud: new THREE.Color(0x5e4e36),
   rockA: new THREE.Color(0x5d5765), rockB: new THREE.Color(0x48444f), moss: new THREE.Color(0x4f6a39), bone: new THREE.Color(0x9a9478),
@@ -2423,6 +2542,24 @@ const ROAD_DEFS = [
   { id: 'causeway', name: 'Bayou Causeway', halfW: 4.4, pts: [[-641, 3], [-672, 5], [-704, 8]] },
   { id: 'bayou', name: 'Bayou Road', halfW: 4.2, pts: [[-904, 30], [-935, 34], [-975, 40], [-1015, 41], [-1045, 39], [-1062, 40]] },
   { id: 'bayou2', name: 'Graveyard Lane', halfW: 4.2, pts: [[-1292, -132], [-1290, -165], [-1250, -192], [-1180, -205], [-1105, -180], [-1040, -125], [-995, -60], [-975, -5], [-975, 40]] },
+  // Frostpeak Isle (north): a cutting through the north cliffs to Frost Bridge, then down to Glass Lake
+  { id: 'frost', name: 'Frost Road', halfW: 4.4, fixedY: 30.2, pts: [[29, -606], [31, -640], [33, -676], [34, -706]] },
+  { id: 'snowline', name: 'Snowline Drive', halfW: 4.3, pts: [[40, -892], [36, -930], [16, -968], [-22, -995], [-52, -1012], [-60, -1018]] },
+  { id: 'lakeloop', name: 'Glass Lake Loop', halfW: 4.3, closed: true, pts: Array.from({ length: 16 }, (_, k) => { const a = -Math.PI / 2 + k / 16 * Math.PI * 2, r = 122 + 6 * Math.sin(k * 2.3); return [GLASS.x + Math.cos(a) * r, GLASS.z - Math.sin(a) * r]; }) },
+  { id: 'iceroad', name: 'Ice Road', halfW: 5.0, ice: true, fixedY: GLASS.y, pts: [[-60, -1018], [-72, -1070], [-48, -1125], [-70, -1185], [-58, -1236], [-60, -1262]] },
+  // Cinder Isle (south): from the Cinder Causeway landing on the north bluff, two laps of a spiral up Mount Ember
+  // to the summit terrace, where the Lava Tube takes over (31_decks.js)
+  { id: 'ember', name: 'Ember Road', halfW: 4.5, glow: true, pts: (() => {
+      const E = EMBER_SPIRAL, sx = EMBER.x + Math.cos(E.a0) * E.r0, sz = EMBER.z + Math.sin(E.a0) * E.r0;
+      const out = [[CINDER_LAND.x, CINDER_LAND.z], [lerp(CINDER_LAND.x, sx, 0.45) - 4, lerp(CINDER_LAND.z, sz, 0.45)], [sx, sz]];
+      for (let k = 1; k <= E.n; k++) { const t = k / E.n, a = E.a0 + t * E.laps * TAU, r = lerp(E.r0, E.r1, t); out.push([EMBER.x + Math.cos(a) * r, EMBER.z + Math.sin(a) * r]); }
+      return out; })() },
+  // out of the Lava Tube at the foot of the south face: east along the black-sand shore, then up to join Ember Road's
+  // first lap low down, a short run from the causeway home to the mainland
+  { id: 'lavaflow', name: 'Lava Flow Road', halfW: 4.5, glow: true, rampTo: { road: 'ember', y0: 4.0 }, pts: (() => {
+      const P = (a, r) => [EMBER.x + Math.cos(a) * r, EMBER.z + Math.sin(a) * r], last = LAVA_TUBE.pts[LAVA_TUBE.pts.length - 1];
+      const E = EMBER_SPIRAL, aj = -0.52, rj = lerp(E.r0, E.r1, (aj - E.a0) / (E.laps * TAU));
+      return [[last[0], last[1]], P(1.19, 218), P(1.0, 216), P(0.8, 213), P(0.55, 210), P(0.3, 207), P(0.05, 205), P(-0.2, 200), P(-0.38, 193), P(aj, rj)]; })() },
   { id: 'islet', name: 'Gull Rock Loop', halfW: 4.2, closed: true, fixedY: 30.2, pts: Array.from({ length: 12 }, (_, k) => [700 + Math.cos(k / 12 * Math.PI * 2) * 37, 690 + Math.sin(k / 12 * Math.PI * 2) * 37]) },
 ];
 
@@ -2440,8 +2577,22 @@ const PLACES = [
   { name: 'Spiral Jump', sub: 'Stunt park', x: 60, z: 190, r: 60 },
   { name: 'Cape Magenta', sub: 'Launch complex', x: -360, z: 10, r: 95 },
   { name: 'Gator Bayou', sub: 'Haunted marsh', x: -1150, z: 60, r: 300 },
+  { name: 'Skull Rock', sub: 'Emerald Caverns', x: -1085, z: 44, r: 45 },
   { name: 'Hollow Hill', sub: 'Gator Bayou', x: -1220, z: 8, r: 150 },
+  { name: 'Ice Arch', sub: 'Frostpeak Isle', x: -166, z: -1201, r: 40 },
+  { name: 'Frozen Falls', sub: 'Frostpeak Isle', x: -140, z: -1290, r: 50 },
   { name: 'Bayou Causeway', sub: 'To Gator Bayou', x: -800, z: 18, r: 110 },
+  { name: 'Frostpeak Isle', sub: 'Snowfields', x: -40, z: -1170, r: 300 },
+  { name: 'Cinder Isle', sub: 'Volcanic island', x: CINDER.x, z: CINDER.z, r: 290 },
+  { name: 'Mount Ember', sub: 'Live volcano', x: EMBER.x, z: EMBER.z, r: 190 },
+  { name: 'Ember Crater', sub: 'Mount Ember', x: EMBER.x, z: EMBER.z, r: 70 },
+  { name: 'Ember Observatory', sub: 'Summit of Mount Ember', x: EMBER.x - 10, z: EMBER.z - 45, r: 26 },
+  { name: 'Cinder Causeway', sub: 'To Cinder Isle', x: -103, z: 699, r: 150 },
+  { name: 'Basalt Stairs', sub: 'Cinder Isle', x: EMBER.x - 250, z: EMBER.z + 36, r: 60 },
+  { name: 'Glass Lake', sub: 'Frozen solid', x: -60, z: -1140, r: 135 },
+  { name: 'Frostpeak', sub: 'Frostpeak Isle', x: -180, z: -1345, r: 120 },
+  { name: 'Frost Bridge', sub: 'To Frostpeak Isle', x: 37, z: -800, r: 90 },
+  { name: 'Snowcap Lodge', sub: 'Glass Lake', x: 45, z: -1250, r: 55 },
   // up in the sky (matched only when you're up there; `deck` places win when you're on that deck)
   { name: 'Sky Highway', sub: 'Above the clouds', x: -60, z: -520, r: 420, sky: true },
   { name: 'Launch Rail', sub: 'Cape Magenta', x: -334, z: -180, r: 250, sky: true, deck: 'launch' },
@@ -2522,6 +2673,8 @@ function rawHeight(x, z, dRoad) {
   if (!nm && !isle.any) return seaFloor(x, z);
   let h = nm ? mainHeight(x, z, dRoad) : seaFloor(x, z);
   if (isle.bayou > 0) h = lerp(h, bayouHeight(x, z, dRoad), isle.bayou);
+  if (isle.frost > 0) h = lerp(h, frostHeight(x, z, dRoad), isle.frost);
+  if (isle.cinder > 0) h = lerp(h, cinderHeight(x, z, dRoad), isle.cinder);
   return h;
 }
 
@@ -2658,6 +2811,11 @@ function buildWorld(scene, quality) {
       for (let i = 0; i < n; i++) y[i] += delta[i];
     }
     if (r.fixedY !== undefined) y = y.map(() => r.fixedY); // e.g. the Gull Rock loop sits flat on its plateau
+    if (r.rampTo) { // a steady climb from y0 to wherever it meets an earlier road (its own embankment, whatever the ground does)
+      const R2 = roads.find(q => q.id === r.rampTo.road), L = S[n - 1]; let b = R2.samples[0];
+      for (const q of R2.samples) if ((q.x - L.x) ** 2 + (q.z - L.z) ** 2 < (b.x - L.x) ** 2 + (b.z - L.z) ** 2) b = q;
+      y = S.map((p, i) => lerp(r.rampTo.y0, b.y, smooth(0, 1, i / (n - 1))));
+    }
     S.forEach((p, i) => p.y = y[i]);
   });
   buildDeckSamples(deckDefs);
@@ -2716,6 +2874,8 @@ function buildWorld(scene, quality) {
   bakeStatic(scene.children.filter(c => !before2.has(c)), scene);
   buildScenery(scene);
   buildGuardrails(scene);
+  Winter.build(scene); // Frostpeak Isle (38_winter.js)
+  Volcano.build(scene); // Cinder Isle (39_volcano.js)
   buildMinimapImage();
   console.log('world', (performance.now() - t0).toFixed(0), 'ms');
 }
@@ -2735,8 +2895,10 @@ function roadAt(x, z) {
   return World.roadMask[jj * World.RM + ii];
 }
 function surfaceAt(x, z) {
-  if (roadAt(x, z)) return 'road';
+  const ri = roadAt(x, z); if (ri) return World.roads[ri - 1].ice ? 'ice' : 'road';
   const h = groundHeight(x, z);
+  if (isleNear(x, z) && Math.hypot(x - FROST.x, z - FROST.z) < FROST.r + 40 && h > 0.3) return inGlass(x, z) && h < GLASS.y + 0.4 ? 'ice' : 'snow'; // Frostpeak Isle
+  if (isleNear(x, z) && Math.hypot(x - CINDER.x, z - CINDER.z) < CINDER.r + 40 && h > 0.3) return 'ash'; // Cinder Isle: loose volcanic ash
   if (h < -0.5) return 'water';
   const L = W.lake; if (Math.hypot(x - L.x, z - L.z) < L.r - 4 && h < L.level - 0.4) return 'water';
   const b = biomeAt(x, z);
@@ -2798,7 +2960,7 @@ function terrainColor(x, z, h, slope, dRoad, out) {
   if (dL < L.r + 10 && h < L.level + 1.2) c.lerp(PAL.wetSand, 0.6);
   // road shoulders (dirt)
   if (dRoad < 8.5) c.lerp(PAL.dirt.clone().lerp(PAL.sand, b.wD * 0.5), smooth(8.5, 5.5, dRoad) * 0.75);
-  const isle = isleParams(x, z); if (isle.bayou > 0) isleColor(x, z, h, slope, dRoad, isle.bayou, c);
+  const isle = isleParams(x, z); if (isle.bayou > 0) isleColor(x, z, h, slope, dRoad, isle.bayou, c); if (isle.frost > 0) frostColor(x, z, h, slope, dRoad, isle.frost, c); if (isle.cinder > 0) cinderColor(x, z, h, slope, dRoad, isle.cinder, c);
   return c;
 }
 
@@ -3267,7 +3429,7 @@ function buildMinimapImage() {
     const k = j * N + i; const h = World.H[k];
     let r = col[k * 3], g = col[k * 3 + 1], b = col[k * 3 + 2];
     const L = W.lake;
-    if (h < 0 || (Math.hypot(wx - L.x, wz - L.z) < L.r + 4 && h < L.level)) { r = 0.33; g = 0.68; b = 0.78; if (Math.hypot(wx - BAYOU.x, wz - BAYOU.z) < BAYOU.r + 20) { r = 0.16; g = 0.24; b = 0.15; } } // (bayou pools: black water)
+    if (h < 0 || (Math.hypot(wx - L.x, wz - L.z) < L.r + 4 && h < L.level)) { r = 0.33; g = 0.68; b = 0.78; if (isleNear(wx, wz) && isleParams(wx, wz).bayou > 0.5) { r = 0.16; g = 0.24; b = 0.15; } } // (bayou pools: black water)
     // hill shading
     const hx = World.H[k + (i < N - 1 ? 1 : 0)] - World.H[k - (i > 0 ? 1 : 0)];
     const sh = clamp(1 - hx * 0.04, 0.75, 1.2);
@@ -3387,10 +3549,35 @@ function deckLayout() {
     id: 'bayoucauseway', name: 'Bayou Causeway', halfW: 5.0, style: 'viaduct',
     pts: [[-704, 8, 'road'], [-726, 10, 'road+0.4'], [-760, 14, 6.5], [-800, 19, 7.4], [-842, 24, 6.8], [-878, 28, 'road+0.4'], [-904, 30, 'road']],
   });
-  // 5) Emerald Caverns: an underground deck right through Hollow Hill (37_cave.js builds the cave round it).
+  // 5) Frost Bridge: out of the cutting through the north cliffs and over the strait to Frostpeak Isle on a big concrete arch
+  defs.push({
+    id: 'frostbridge', name: 'Frost Bridge', halfW: 5.2, style: 'viaduct',
+    pts: [[34, -706, 'road'], [35, -726, 'road+0.3'], [36, -760, 31.2], [38, -800, 31.8], [39, -840, 31.2], [40, -872, 'road+0.3'], [40, -892, 'road']],
+    arch: { a: [36, -745], b: [40, -868] },
+  });
+  // 6) Cinder Causeway: off the Coast Highway at Bayview's east end, straight out to sea and south to Cinder Isle,
+  //    lined up exactly with the Moon's re-entry chute (whose kicker ends just above the junction) so a car flying off
+  //    the chute lands on it: low and extra wide over the beach and the shallows (the landing apron), then out over the strait
+  {
+    const L0 = [-23.1, 483.7], u = [-0.349, 0.937], at = (t) => [L0[0] + u[0] * t, L0[1] + u[1] * t];
+    const tEnd = Math.hypot(CINDER_LAND.x - L0[0], CINDER_LAND.z - L0[1]);
+    defs.push({
+      id: 'cindercauseway', name: 'Cinder Causeway', halfW: 5.0, style: 'viaduct',
+      pts: [[...at(33.5), 'road'], [...at(46), 'road+0.3'], [...at(90), 7.6], [...at(150), 7.9], [...at(210), 9.4], [...at(280), 12.6], [...at(340), 13.4], [...at(tEnd - 26), 'road+0.3'], [CINDER_LAND.x, CINDER_LAND.z, 'road']],
+      widen: [[0.13, 0.62, 9]],
+    });
+  }
+  // 8) Lava Tube: from the summit terrace at the top of Ember Road into Mount Ember, a corkscrew down round the magma
+  //    chamber and out at the foot of the south face (39_volcano.js builds the tube round it)
+  defs.push({
+    id: 'lavatube', name: 'Lava Tube', halfW: LAVA_TUBE.hw, style: 'lava', under: true, lava: true, tubeDef: LAVA_TUBE, surf: 'road',
+    pts: LAVA_TUBE.pts.map((p, i, a) => [p[0], p[1], i === 0 || i === a.length - 1 ? 'road' : p[2]]),
+    channel: { flat: LAVA_TUBE.flat, k: LAVA_TUBE.k, rampIn: 18, rampOut: 18 }, bank: { k: 5, max: 0.07 },
+  });
+  // 7) Emerald Caverns: an underground deck right through Hollow Hill (37_cave.js builds the cave round it).
   //    'under' decks win over the hill above them whenever you're down at their level.
   defs.push({
-    id: 'caverns', name: 'Emerald Caverns', halfW: CAVE_DEF.hw, style: 'cave', under: true, cave: true, surf: 'road',
+    id: 'caverns', name: 'Emerald Caverns', halfW: CAVE_DEF.hw, style: 'cave', under: true, cave: true, tubeDef: CAVE_DEF, surf: 'road',
     pts: CAVE_DEF.pts.map((p, i, a) => [p[0], p[1], i === 0 || i === a.length - 1 ? 'road' : p[2]]),
     channel: { flat: CAVE_DEF.flat, k: CAVE_DEF.k, rampIn: 22, rampOut: 22 },
   });
@@ -3433,7 +3620,7 @@ function buildDeckSamples(defs) {
     }
     if (def.lip) { // kicker: the last few metres rise more steeply
       const L = def.lip.len || 7, R = def.lip.rise || 0.9;
-      for (const p of S) { const d = s - p.s; if (d < L) p.y += R * smooth(L, 0, d); }
+      for (const p of S) { const d = s - p.s; if (d < L) p.y += R * (def.lip.kick ? (1 - d / L) ** 2 : smooth(L, 0, d)); } // (a kick: steepest right at the end, so it throws you up and out)
     }
     if (def.widen) for (const p of S) { p.hw = def.halfW; for (const [f0, f1, hw] of def.widen) { const s0 = f0 * s, s1 = f1 * s; p.hw = Math.max(p.hw, lerp(def.halfW, hw, smooth(s0 - 25, s0, p.s) * smooth(s1 + 25, s1, p.s))); } }
     if (def.bank) { // banked turns: the outside of a bend is raised (bk = height change per metre of signed lateral)
@@ -3501,7 +3688,7 @@ function surfaceHeight(x, z, yRef) {
   return d && (d.y > g || underDeck(d, yRef)) ? d.y : g;
 }
 // down at the level of an underground deck (the cave), the hill overhead doesn't count
-function underDeck(d, yRef) { return d.deck.under && yRef - d.y < (d.deck.cave ? caveSize(d.deck.samples[d.i].s).top + 2 : 4); } // (in the cave: anywhere below the roof)
+function underDeck(d, yRef) { return d.deck.under && yRef - d.y < (d.deck.tubeDef ? d.deck.tubeDef.size(d.deck.samples[d.i].s).top + 2 : 4); } // (in a tunnel: anywhere below the roof)
 
 // --- terrain interplay ---------------------------------------------------
 // Snap deck ends marked 'road' onto the centreline of the road they join, and remember the join
@@ -3599,6 +3786,7 @@ function buildDeckMeshes(scene) {
   for (const d of Decks.list) {
     if (d.sky) { buildSkyDeck(scene, d); continue; } // launch rail, cloud road, moon bridge/track, chute (34_sky.js)
     if (d.cave) { Cave.build(scene, d); continue; } // Emerald Caverns (37_cave.js)
+    if (d.lava) { LavaTube.build(scene, d); continue; } // Mount Ember's Lava Tube (39_volcano.js)
     const S = d.samples, n = S.length, hw = d.halfW;
     // road surface
     const pos = [], uv = [], idx = [];
@@ -3788,6 +3976,7 @@ function drawDecksOnMinimap(ctx, toPx) {
     ctx.beginPath(); d.samples.forEach((p, i) => i ? ctx.lineTo(toPx(p.x), toPx(p.z)) : ctx.moveTo(toPx(p.x), toPx(p.z)));
     if (d.sky) { ctx.setLineDash(pass ? [5, 3] : []); ctx.strokeStyle = pass ? '#9fe8ff' : 'rgba(20,33,61,0.35)'; ctx.lineWidth = pass ? 1.8 : 3.6; }
     else if (d.cave) { ctx.setLineDash(pass ? [4, 3] : []); ctx.strokeStyle = pass ? '#5dff9f' : 'rgba(10,20,14,0.7)'; ctx.lineWidth = pass ? 2.2 : 4.6; } // underground: dashed green
+    else if (d.lava) { ctx.setLineDash(pass ? [4, 3] : []); ctx.strokeStyle = pass ? '#ff8a3a' : 'rgba(30,8,4,0.7)'; ctx.lineWidth = pass ? 2.2 : 4.6; } // the lava tube: dashed orange
     else { ctx.setLineDash([]); ctx.strokeStyle = pass ? '#ffd166' : 'rgba(20,33,61,0.6)'; ctx.lineWidth = pass ? 2.2 : 4.4; }
     ctx.stroke();
   }
@@ -4245,7 +4434,7 @@ function buildScenery(scene) {
 //  The Sky Highway and the Moon.
 //  Cape Magenta's launch rail fires you up into the clouds; a banked cloud-top road with two jumps and
 //  the Cloud 9 Diner leads to a boosted bridge onto a low-gravity Moon; the re-entry chute dives back to
-//  Earth, glowing hot, and launches you off the coast for a splashdown.
+//  Earth, glowing hot, and its kicker throws you off the south coast onto the Cinder Causeway (or into the sea).
 //  Everything up here is a "sky" deck (31_decks.js) plus the Moon's own curved surface.
 // ============================================================
 const MOON = { x: 250, y: 180, z: -150, R: 110, g: 0.3 };
@@ -4320,12 +4509,13 @@ function skyDeckDefs() {
     const x = MOON.x + Math.cos(th) * r, z = MOON.z + Math.sin(th) * r; mt.push([x, z, () => moonSurfaceY(x, z) + 0.07]);
   }
   defs.push({ id: 'moontrack', name: 'Moon Dust Track', halfW: 6.5, style: 'moon', sky: true, sticky: true, onMoon: true, surf: 'moon', pts: mt, uvLen: 10 });
-  // 5) Re-entry chute: off the Moon's rim and down a bobsled channel to a kicker over the south coast
+  // 5) Re-entry chute: off the Moon's rim and down a bobsled channel to a kicker over the south coast, lined up with
+  //    the Cinder Causeway (31_decks.js), so the kicker throws you onto it
   const ex = Math.cos(thE), ez = Math.sin(thE), cp = [[MOON.x + ex * 53, MOON.z + ez * 53], [MOON.x + ex * 61, MOON.z + ez * 61],
     [205, -50], [168, 30], [132, 115], [96, 190], [64, 262], [38, 330], [14, 392], [-6, 440], [-18, 470], [-24, 486]];
   let ct = 0; const ca = [0]; for (let k = 3; k < cp.length; k++) { ct += Math.hypot(cp[k][0] - cp[k - 1][0], cp[k][1] - cp[k - 1][1]); ca.push(ct); }
   const Y1 = () => moonSurfaceY(cp[1][0], cp[1][1]) + 0.07, Y2 = 20.5, F = (u) => u - 0.6 * Math.sin(TAU * u) / TAU;
-  defs.push({ id: 'chute', name: 'Re-entry Chute', halfW: 9, style: 'chute', sky: true, sticky: true, channel: { flat: 4.6, k: 0.17, rampIn: 40 }, bank: { k: 22, max: 0.42 }, lip: { len: 16, rise: 2.6 }, uvLen: 14,
+  defs.push({ id: 'chute', name: 'Re-entry Chute', halfW: 9, style: 'chute', sky: true, sticky: true, channel: { flat: 4.6, k: 0.17, rampIn: 40 }, bank: { k: 22, max: 0.42 }, lip: { len: 26, rise: 6.2, kick: true }, uvLen: 14,
     pts: cp.map((p, k) => [p[0], p[1], k === 0 ? () => moonSurfaceY(p[0], p[1]) + 0.07 : k === 1 ? Y1 : (() => { const u = ca[k - 2] / ct; return () => lerp(Y1(), Y2, F(u)); })()]) });
   return defs;
 }
@@ -4742,6 +4932,13 @@ const Sky = {
       for (let k = 0; k < 90; k++) { const a = Math.random() * TAU, sp = 2 + Math.random() * 7; game.particles.emit(P.pos.x + Math.cos(a) * 1.5, P.pos.y + 0.3, P.pos.z + Math.sin(a) * 1.5, Math.cos(a) * sp, 6 + Math.random() * 12, Math.sin(a) * sp, Math.random() < 0.7 ? 0xeefaff : 0xbfe6f5, 1.4, 1.6, 2.6); }
       game.ui.flash('SPLASHDOWN!', 1.4);
     }
+    // touchdown: off the kicker and onto the Cinder Causeway
+    if (this.lipT < 6 && P.onGround && P.onDeck && P.onDeck.id === 'cindercauseway' && !this.touchdown) {
+      this.touchdown = true; Rumble.pulse(0.9, 0.6, 300); game.shake = Math.max(game.shake || 0, 0.45);
+      for (let k = 0; k < 40; k++) { const a = Math.random() * TAU, sp = 2 + Math.random() * 6; game.particles.emit(P.pos.x + Math.cos(a), P.pos.y + 0.2, P.pos.z + Math.sin(a), Math.cos(a) * sp + P.vx * 0.2, 1 + Math.random() * 3, Math.sin(a) * sp + P.vz * 0.2, 0xd9d2c8, 1.2, 1.1, 2.2); }
+      game.ui.flash('TOUCHDOWN! Next stop: Mount Ember', 1.8);
+    }
+    if (this.lipT > 8) this.touchdown = false;
     if (P.inWater <= 0 && this.lipT > 8) this.splashdown = false;
   },
   boom(game) {
@@ -5440,6 +5637,7 @@ const Cave = {
         const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.22, 0.35, 8), new THREE.MeshLambertMaterial({ color: 0x2a2a2a })); bowl.position.set(tx, ty + 3.3, tz); this.outer.add(bowl);
         (this.torches = this.torches || []).push({ x: tx, y: ty + 3.75, z: tz });
       }
+      if (dir < 0) this.buildSkull(p, C, rng);
       // signs at the east mouth
       if (dir < 0) {
         const sign = (lines, w, h, x, z, yaw, y0, tilt) => {
@@ -5525,6 +5723,53 @@ const Cave = {
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.wisps.length * 3), 3));
     this.wispPts = new THREE.Points(wg, new THREE.PointsMaterial({ map: wt, size: 1.6, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.85, fog: false }));
     this.wispPts.frustumCulled = false; this.outer.add(this.wispPts);
+  },
+
+  // ---------- Skull Rock: Hollow Hill's east face is a giant skull; the cave is its mouth, the eye sockets glow ----------
+  buildSkull(p, C, rng) {
+    const X = new THREE.Vector3(-p.tz, 0, p.tx), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(-p.tx, 0, -p.tz); // right-ish, up, out of the hill
+    const O = new THREE.Vector3(p.x, p.y, p.z), RX = 21, RY = 19.5, RZ = 11.5, cy = 19, cz = -3.5;
+    const geo = new THREE.SphereGeometry(1, 56, 40).toNonIndexed(), pos = geo.attributes.position, n = pos.count, col = new Float32Array(n * 3);
+    const bone = new THREE.Color(0xc4bca5), grime = new THREE.Color(0x6e6656), soot = new THREE.Color(0x16130f), c = new THREE.Color();
+    const eyes = [[-7.6, 24.5], [7.6, 24.5]], keep = new Array(n / 3).fill(true);
+    const lx = new Float32Array(n), ly = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const sx = pos.getX(i), sy = pos.getY(i), sz = pos.getZ(i);
+      let x = sx * RX, y = cy + sy * RY, z = cz + sz * RZ, dark = 0;
+      if (sz > 0.15) { // the face: sockets, nose, brow, cheekbones, carved into the front
+        for (const [ex, ey] of eyes) { const d = Math.hypot((x - ex) / 5.6, (y - ey) / 5.0); if (d < 1) { z -= 7 * (1 - d * d) * sz; dark = Math.max(dark, 1 - d * 0.8); } }
+        const nd = Math.max(Math.abs(x) / (2.6 * (1 - (16.5 - y) / 7)), 0); if (y > 12.5 && y < 19.5 && nd < 1) { z -= 4 * (1 - nd) * sz; dark = Math.max(dark, 0.9 * (1 - nd)); }
+        z += 1.6 * Math.exp(-((y - 30) ** 2) / 6) * (1 - Math.min(1, Math.abs(x) / 14)) * sz;                 // brow ridge
+        for (const ex of [-11, 11]) z += 2.2 * Math.exp(-(((x - ex) ** 2) / 20 + ((y - 15) ** 2) / 14)) * sz; // cheekbones
+      }
+      lx[i] = x; ly[i] = y;
+      const w = new THREE.Vector3().copy(O).addScaledVector(X, x).addScaledVector(Y, y).addScaledVector(Z, z + 0.6 * Noise.simplex(x / 3, y / 3));
+      pos.setXYZ(i, w.x, w.y, w.z);
+      const cr = Math.abs(Noise.simplex(x / 6 + 4, y / 6)) < 0.06 ? 0.5 : 0; // cracks
+      c.copy(bone).lerp(grime, Math.max(0, Noise.simplex(x / 9, y / 9 + 3)) * 0.6 + smooth(14, -2, y) * 0.5 + cr).lerp(soot, Math.min(1, dark));
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    // open the mouth (the cave road runs in under the teeth) and drop anything below the ground
+    for (let t = 0; t < n / 3; t++) { let inMouth = 0, below = 0; for (let k = 0; k < 3; k++) { const i = t * 3 + k; if (ly[i] < 10.5 && Math.abs(lx[i]) < C.hw + 2.5) inMouth++; if (ly[i] < -1) below++; } if (inMouth || below === 3) keep[t] = false; }
+    const P2 = [], C2 = [];
+    for (let t = 0; t < n / 3; t++) if (keep[t]) for (let k = 0; k < 3; k++) { const i = t * 3 + k; P2.push(pos.getX(i), pos.getY(i), pos.getZ(i)); C2.push(col[i * 3], col[i * 3 + 1], col[i * 3 + 2]); }
+    const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(P2, 3)); g2.setAttribute('color', new THREE.Float32BufferAttribute(C2, 3)); g2.computeVertexNormals();
+    const skull = new THREE.Mesh(g2, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide })); skull.castShadow = true; skull.receiveShadow = true; this.outer.add(skull);
+    // teeth along the top of the mouth (well above the road), a couple of broken ones
+    const tooth = new THREE.BoxGeometry(1, 1, 1); tooth.translate(0, -0.5, 0);
+    const tm = new THREE.InstancedMesh(tooth, new THREE.MeshLambertMaterial({ color: 0xd9d1b8, flatShading: true }), 9), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), Z);
+    for (let k = 0; k < 9; k++) { const x = -C.hw + 1.2 + k * (2 * C.hw - 2.4) / 8, len = k === 3 ? 1.0 : 2.0 + rng() * 0.8; v.copy(O).addScaledVector(X, x).addScaledVector(Y, 10.8).addScaledVector(Z, 3.5); sc.set(2.0, len, 2.2); m4.compose(v, q, sc); tm.setMatrixAt(k, m4); }
+    tm.computeBoundingSphere(); this.outer.add(tm);
+    // the eyes glow green from deep inside
+    const gt = canvasTex(64, 64, (cx, w, h) => { const gr = cx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(190,255,210,1)'); gr.addColorStop(0.3, 'rgba(70,255,140,0.75)'); gr.addColorStop(1, 'rgba(20,200,90,0)'); cx.fillStyle = gr; cx.fillRect(0, 0, w, h); });
+    this.skullEyes = eyes.map(([ex, ey]) => {
+      const w = new THREE.Vector3().copy(O).addScaledVector(X, ex).addScaledVector(Y, ey).addScaledVector(Z, cz + RZ - 5.5);
+      const core = new THREE.Mesh(new THREE.SphereGeometry(1.7, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7dffb0 })); core.position.copy(w); this.outer.add(core);
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); halo.position.copy(w).addScaledVector(Z, 1.5); halo.scale.set(10, 10, 1); this.outer.add(halo);
+      return halo;
+    });
+    this.skullAt = { x: O.x + Z.x * 8, z: O.z + Z.z * 8 };
   },
 
   // ============================================================
@@ -5687,10 +5932,11 @@ const Cave = {
       this.batMesh.instanceMatrix.needsUpdate = true;
       this.updateZombies(dt, game);
     }
+    if (this.outer.visible && this.skullEyes) this.skullEyes.forEach((h, k) => { const f = 0.8 + 0.2 * Math.sin(this.t * 1.9 + k * 0.7) + 0.1 * Math.sin(this.t * 11 + k); h.scale.set(10 * f, 10 * f, 1); });
     if (this.outer.visible && this.flames) this.flames.forEach((f, k) => { const fl = 0.85 + 0.25 * Math.sin(this.t * 13 + k * 2) * Math.sin(this.t * 7.3 + k); f.scale.set(1.8 * fl, 2.7 * fl, 1); });
     if (this.outer.visible && this.wispPts) { const a = this.wispPts.geometry.attributes.position; this.wisps.forEach((w, k) => a.setXYZ(k, w.x + Math.sin(this.t * 0.31 + w.ph) * 5, w.y + Math.sin(this.t * 1.1 + w.ph * 2) * 0.5, w.z + Math.cos(this.t * 0.23 + w.ph) * 5)); a.needsUpdate = true; this.wispPts.material.opacity = 0.55 + 0.35 * Math.sin(this.t * 2.2); }
     this.light(game);
-    Sound.cave && Sound.cave(this.k, dt);
+    Sound.cave && Sound.cave(Math.max(this.k, LavaTube.k || 0), dt, this.k >= (LavaTube.k || 0)); // (the Lava Tube echoes too, but doesn't drip)
   },
   // inside: no sun, dim green-black ambient, short dark fog, headlights on, reflections down, a shorter view
   light(game) {
@@ -5741,6 +5987,1061 @@ const Cave = {
 };
 
 // ============================================================
+//  Frostpeak Isle (v13.2): the winter island north of the North Cliffs, across Frost Bridge.
+//  Snowfields round Glass Lake, frozen solid and drivable (an 'ice' surface with almost no grip),
+//  the Ice Road straight across it between striped poles, ice-fishing huts, Snowcap Lodge with its
+//  glowing windows and chimney smoke, snowy pines and a snowman. Near the island it snows, the air
+//  turns to a pale haze and the wind howls. Everything is in one group that's hidden past the fog.
+// ============================================================
+const Winter = {
+  k: 0, t: 0,
+  build(scene) {
+    const g = this.g = new THREE.Group(); g.name = 'winter'; scene.add(g);
+    const rng = makeRng(4242), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    const free = (x, z, pad = 7) => { const nr = World.roadIndex.nearest(x, z, 30); return !(nr && nr.d < World.roads[nr.ri].halfW + pad); };
+    const onIsle = (x, z) => isleParams(x, z).frost > 0.8;
+    // ---------- Glass Lake: a sheet of ice with cracks, frosted patches and the odd trapped bubble ----------
+    {
+      const tex = canvasTex(1024, 1024, (c, w, h) => {
+        const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, '#a9d8ea'); gr.addColorStop(0.7, '#bfe3f1'); gr.addColorStop(1, '#e6f3f8'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+        for (let i = 0; i < 60; i++) { const x = Math.random() * w, y = Math.random() * h, r = 20 + Math.random() * 90; const g2 = c.createRadialGradient(x, y, 0, x, y, r); g2.addColorStop(0, 'rgba(255,255,255,0.55)'); g2.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g2; c.fillRect(x - r, y - r, r * 2, r * 2); }
+        for (let i = 0; i < 300; i++) { c.fillStyle = 'rgba(255,255,255,0.5)'; c.beginPath(); c.arc(Math.random() * w, Math.random() * h, 1 + Math.random() * 2.5, 0, TAU); c.fill(); }
+        const crack = (x, y, a, len, wd) => { c.lineWidth = wd; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < len; k++) { a += (Math.random() - 0.5) * 0.7; x += Math.cos(a) * 9; y += Math.sin(a) * 9; c.lineTo(x, y); if (Math.random() < 0.08 && wd > 0.8) { c.stroke(); crack(x, y, a + (Math.random() < 0.5 ? 1 : -1) * (0.6 + Math.random()), len * 0.4, wd * 0.6); c.beginPath(); c.moveTo(x, y); } } c.stroke(); };
+        c.strokeStyle = 'rgba(255,255,255,0.75)'; for (let i = 0; i < 22; i++) crack(Math.random() * w, Math.random() * h, Math.random() * TAU, 25 + Math.random() * 40, 1.6);
+        c.strokeStyle = 'rgba(60,120,160,0.35)'; for (let i = 0; i < 14; i++) crack(Math.random() * w, Math.random() * h, Math.random() * TAU, 20 + Math.random() * 30, 1.2);
+      });
+      const ice = new THREE.Mesh(new THREE.CircleGeometry(GLASS.r + 4, 72), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.14, metalness: 0.05, envMapIntensity: 1.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      ice.rotation.x = -Math.PI / 2; ice.position.set(GLASS.x, GLASS.y + 0.02, GLASS.z); ice.receiveShadow = true; g.add(ice);
+      // a snowy rim where the ice meets the shore
+      const rim = new THREE.Mesh(new THREE.RingGeometry(GLASS.r + 3, GLASS.r + 9, 72), new THREE.MeshLambertMaterial({ color: 0xf2f6fb, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+      rim.rotation.x = -Math.PI / 2; rim.position.set(GLASS.x, GLASS.y + 0.04, GLASS.z); rim.receiveShadow = true; g.add(rim);
+    }
+    // ---------- snowy pines: a trunk and three tiers of dark green, each with a cap of snow ----------
+    {
+      const parts = [], tr = new THREE.CylinderGeometry(0.18, 0.28, 2, 6); tr.translate(0, 1, 0); parts.push(colorizeGeo(tr, 0x5a4232));
+      [[4.2, 2.3, 1.2], [3.3, 2.0, 3.0], [2.3, 1.8, 4.7]].forEach(([r, hgt, y]) => {
+        const c1 = new THREE.ConeGeometry(r, hgt * 1.5, 7); c1.translate(0, y + hgt * 0.75, 0); parts.push(colorizeGeo(c1, 0x2c5845));
+        const c2 = new THREE.ConeGeometry(r * 0.82, hgt * 0.8, 7); c2.translate(0, y + hgt * 1.2, 0); parts.push(colorizeGeo(c2, 0xf3f6fa));
+      });
+      const geo = mergeGeos(parts), trees = [];
+      for (let k = 0; k < 4000 && trees.length < 300; k++) {
+        const a = rng() * TAU, r = Math.sqrt(rng()) * FROST.r, x = FROST.x + Math.cos(a) * r, z = FROST.z + Math.sin(a) * r, h = groundHeight(x, z);
+        if (h < 2 || h > 95 || !onIsle(x, z) || !free(x, z) || Math.hypot(x - GLASS.x, z - GLASS.z) < GLASS.r + 14 || Math.hypot(x - 45, z + 1262) < 30) continue;
+        if (Noise.fbm(x / 90 + 3, z / 90, 2) < -0.1 && rng() < 0.7) continue; // clearings
+        trees.push([x, h, z, 0.7 + rng() * 0.8]);
+      }
+      const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), trees.length); im.castShadow = true;
+      trees.forEach(([x, h, z, s], k) => { e.set(0, rng() * TAU, 0); q.setFromEuler(e); sc.set(s, s * (0.9 + rng() * 0.3), s); v.set(x, h - 0.2, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+      im.computeBoundingSphere(); g.add(im);
+    }
+    // ---------- rocks with snow on top, and soft drifts ----------
+    {
+      const rg = new THREE.DodecahedronGeometry(1, 0).toNonIndexed(); rg.computeVertexNormals();
+      const nr = rg.attributes.normal, col = new Float32Array(nr.count * 3); for (let i = 0; i < nr.count; i++) { const up = nr.getY(i) > 0.45; col[i * 3] = up ? 0.95 : 0.42; col[i * 3 + 1] = up ? 0.97 : 0.45; col[i * 3 + 2] = up ? 1.0 : 0.5; } rg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const rocks = []; for (let k = 0; k < 1500 && rocks.length < 90; k++) { const a = rng() * TAU, r = Math.sqrt(rng()) * FROST.r, x = FROST.x + Math.cos(a) * r, z = FROST.z + Math.sin(a) * r, h = groundHeight(x, z); if (h < 1 || !onIsle(x, z) || !free(x, z, 5) || inGlass(x, z)) continue; rocks.push([x, h, z, 0.8 + rng() * 2.4]); }
+      const im = new THREE.InstancedMesh(rg, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), rocks.length); im.castShadow = true;
+      rocks.forEach(([x, h, z, s], k) => { e.set(rng() * 0.5, rng() * TAU, rng() * 0.5); q.setFromEuler(e); sc.set(s, s * 0.7, s * (0.8 + rng() * 0.4)); v.set(x, h - s * 0.25, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+      im.computeBoundingSphere(); g.add(im);
+      const dg = new THREE.SphereGeometry(1, 10, 6, 0, TAU, 0, Math.PI / 2), drifts = [];
+      for (let k = 0; k < 1500 && drifts.length < 120; k++) { const a = rng() * TAU, r = Math.sqrt(rng()) * FROST.r, x = FROST.x + Math.cos(a) * r, z = FROST.z + Math.sin(a) * r, h = groundHeight(x, z); if (h < 1 || !onIsle(x, z) || !free(x, z, 4) || inGlass(x, z)) continue; drifts.push([x, h, z, 2 + rng() * 4]); }
+      const dm = new THREE.InstancedMesh(dg, new THREE.MeshLambertMaterial({ color: 0xf4f7fb }), drifts.length);
+      drifts.forEach(([x, h, z, s], k) => { e.set(0, rng() * TAU, 0); q.setFromEuler(e); sc.set(s, s * 0.28, s * (0.5 + rng() * 0.4)); v.set(x, h - 0.15, z); m4.compose(v, q, sc); dm.setMatrixAt(k, m4); });
+      dm.computeBoundingSphere(); dm.receiveShadow = true; g.add(dm);
+    }
+    // ---------- the Ice Road: orange-and-black striped poles with little flags down both sides ----------
+    {
+      const R = World.roads.find(r => r.id === 'iceroad'), poles = [];
+      for (const p of R.samples) { if (Math.round(p.s / 2.5) % 7) continue; for (const sd of [-1, 1]) poles.push([p.x - p.tz * sd * (R.halfW + 1.2), GLASS.y, p.z + p.tx * sd * (R.halfW + 1.2)]); }
+      const stripe = canvasTex(16, 64, (c, w, h) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#1b1b1f' : '#ff6a1a'; c.fillRect(0, i * h / 8, w, h / 8); } });
+      const pg = new THREE.CylinderGeometry(0.06, 0.06, 1.8, 6); pg.translate(0, 0.9, 0);
+      const pm = new THREE.InstancedMesh(pg, new THREE.MeshLambertMaterial({ map: stripe }), poles.length);
+      poles.forEach(([x, y, z], k) => { m4.makeTranslation(x, y, z); pm.setMatrixAt(k, m4); }); pm.computeBoundingSphere(); g.add(pm);
+      const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute([0, 1.8, 0, 0.55, 1.62, 0, 0, 1.45, 0], 3)); fg.computeVertexNormals();
+      const fm = new THREE.InstancedMesh(fg, new THREE.MeshBasicMaterial({ color: 0xff3d2e, side: THREE.DoubleSide }), poles.length);
+      poles.forEach(([x, y, z], k) => { e.set(0, rng() * TAU, 0); q.setFromEuler(e); v.set(x, y, z); sc.set(1, 1, 1); m4.compose(v, q, sc); fm.setMatrixAt(k, m4); }); fm.computeBoundingSphere(); g.add(fm);
+    }
+    // ---------- ice-fishing huts out on the lake ----------
+    const hutMat = [0xc8402e, 0x2f6fae, 0xe0a12a, 0x3a8a5a].map(c => new THREE.MeshLambertMaterial({ color: c, flatShading: true }));
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0xf2f5fa, flatShading: true }), dark = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
+    [[-20, -1100, 0.6], [-105, -1095, 2.1], [-95, -1190, 4.0], [-15, -1180, 5.2]].forEach(([x, z, yaw], i) => {
+      const hg = new THREE.Group(); hg.position.set(x, GLASS.y, z); hg.rotation.y = yaw;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.1, 3), hutMat[i]); body.position.y = 1.05; body.castShadow = true; hg.add(body);
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.0, 1.0, 4, 1), roofMat); roof.rotation.y = Math.PI / 4; roof.scale.set(1, 1, 1.25); roof.position.y = 2.6; hg.add(roof);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.05), dark); door.position.set(0, 0.85, 1.52); hg.add(door);
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.2, 6), dark); pipe.position.set(0.7, 2.8, -0.6); hg.add(pipe);
+      (this.chimneys = this.chimneys || []).push({ x: x + Math.cos(yaw) * 0.7, y: GLASS.y + 3.5, z: z - Math.sin(yaw) * 0.7, small: true });
+      g.add(hg);
+    });
+    this.buildLodge(g, rng);
+    this.buildArch(g, rng);
+    this.buildFalls(g, rng);
+    // ---------- a snowman by the lodge ----------
+    {
+      const sx = 22, sz = -1238, sy = groundHeight(sx, sz), sm = new THREE.Group(); sm.position.set(sx, sy, sz); sm.rotation.y = -0.6;
+      const snow = new THREE.MeshLambertMaterial({ color: 0xf6f8fc });
+      [[0.95, 0.85], [0.7, 2.25], [0.48, 3.28]].forEach(([r, y]) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), snow); b.position.y = y; b.castShadow = true; sm.add(b); });
+      const coal = new THREE.MeshLambertMaterial({ color: 0x18181c });
+      for (const ex of [-0.17, 0.17]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), coal); eye.position.set(ex, 3.42, 0.42); sm.add(eye); }
+      for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), coal); b.position.set(0, 2.1 + k * 0.28, 0.66); sm.add(b); }
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0xff7a1a })); nose.rotation.x = Math.PI / 2; nose.position.set(0, 3.3, 0.7); sm.add(nose);
+      const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.5, 12), coal); hat.position.y = 3.95; sm.add(hat); const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 14), coal); brim.position.y = 3.72; sm.add(brim);
+      const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.11, 6, 14), new THREE.MeshLambertMaterial({ color: 0xe0186e })); scarf.rotation.x = Math.PI / 2; scarf.position.y = 2.9; sm.add(scarf); // in Shelby magenta
+      const stick = new THREE.MeshLambertMaterial({ color: 0x4a3324 });
+      for (const sd of [-1, 1]) { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 1.4, 5), stick); a.position.set(sd * 1.15, 2.55, 0); a.rotation.z = sd * -1.0; sm.add(a); }
+      g.add(sm);
+    }
+    // ---------- snowfall round the camera ----------
+    {
+      const N = this.flakeN = 1800, pos = new Float32Array(N * 3); this.flakeOff = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) { this.flakeOff[i * 3] = rng() * 120; this.flakeOff[i * 3 + 1] = rng() * 60; this.flakeOff[i * 3 + 2] = rng() * 120; }
+      const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const ft = canvasTex(32, 32, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+      this.flakes = new THREE.Points(fg, new THREE.PointsMaterial({ map: ft, size: 0.32, sizeAttenuation: true, transparent: true, depthWrite: false, opacity: 0.9 }));
+      this.flakes.frustumCulled = false; this.flakes.visible = false; scene.add(this.flakes);
+    }
+    // ---------- chimney smoke (lodge and huts) ----------
+    {
+      const st = canvasTex(64, 64, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(235,238,245,0.7)'); gr.addColorStop(1, 'rgba(235,238,245,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+      this.puffs = []; for (const ch of this.chimneys) for (let k = 0; k < (ch.small ? 5 : 9); k++) this.puffs.push({ ch, t: k / (ch.small ? 5 : 9) });
+      const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.puffs.length * 3), 3));
+      this.smoke = new THREE.Points(pg, new THREE.PointsMaterial({ map: st, size: 3.2, sizeAttenuation: true, transparent: true, depthWrite: false, opacity: 0.6 }));
+      this.smoke.frustumCulled = false; g.add(this.smoke);
+    }
+    bakeStatic([...g.children], g);
+    this.ready = true;
+  },
+  // ---------- Snowcap Lodge: a big A-frame chalet with a glass front, a deck and a stone chimney ----------
+  buildLodge(g, rng) {
+    const X = 45, Z = -1262, y0 = groundHeight(X, Z), yaw = Math.atan2(GLASS.x - X, GLASS.z - Z); // the glass front faces the lake
+    const L = new THREE.Group(); L.position.set(X, y0, Z); L.rotation.y = yaw;
+    const logs = new THREE.MeshLambertMaterial({ color: 0x6b4630, flatShading: true }), logsD = new THREE.MeshLambertMaterial({ color: 0x4e3221, flatShading: true });
+    const snow = new THREE.MeshLambertMaterial({ color: 0xf4f7fb, flatShading: true }), stone = new THREE.MeshLambertMaterial({ color: 0x8a8790, flatShading: true });
+    const glow = new THREE.MeshLambertMaterial({ color: 0x3a2a1a, emissive: 0xffb35c, emissiveIntensity: 0.9 }); (World.glowMats = World.glowMats || []).push(glow);
+    const W2 = 7, H = 10, D = 16;
+    // base walls
+    const base = new THREE.Mesh(new THREE.BoxGeometry(W2 * 2, 2.6, D), logs); base.position.y = 1.3; base.castShadow = true; L.add(base);
+    // the A-frame roof: two big slabs leaning together, snow on top
+    for (const sd of [-1, 1]) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(0.6, Math.hypot(W2 + 1.2, H), D + 1.6), logsD); const ang = Math.atan2(W2 + 1.2, H);
+      slab.position.set(sd * (W2 + 1.2) / 2, 2.6 + H / 2, 0); slab.rotation.z = sd * ang; slab.castShadow = true; L.add(slab);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.35, Math.hypot(W2 + 1.2, H) * 0.96, D + 1.7), snow); cap.position.set(sd * ((W2 + 1.2) / 2 + 0.36 * Math.cos(ang)), 2.6 + H / 2 + 0.36 * Math.sin(ang) * 0.4, 0); cap.rotation.z = sd * ang; L.add(cap);
+    }
+    // the triangular glass front (and back), lit warm inside
+    const tri = new THREE.Shape(); tri.moveTo(-W2 + 0.4, 0); tri.lineTo(W2 - 0.4, 0); tri.lineTo(0, H - 0.6); tri.closePath();
+    for (const sd of [1, -1]) {
+      const f = new THREE.Mesh(new THREE.ShapeGeometry(tri), sd > 0 ? glow : logs); f.position.set(0, 2.6, sd * D / 2); if (sd < 0) f.rotation.y = Math.PI; L.add(f);
+      if (sd > 0) for (const [x, y, w, h] of [[0, H / 2 - 0.3, 0.25, H - 1.2], [0, 2.6, W2 * 1.6, 0.22], [0, 5.2, W2 * 1.0, 0.22]]) { const mul = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.25), logsD); mul.position.set(x, 2.6 + y - (y === H / 2 - 0.3 ? 0 : 2.6), D / 2 + 0.08); L.add(mul); }
+    }
+    // ground-floor windows, the door, a deck with a rail
+    for (const x of [-4.5, -1.8, 1.8, 4.5]) { const w = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.1), glow); w.position.set(x, 1.5, D / 2 + 0.02); L.add(w); }
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(W2 * 2 + 3, 0.3, 4), logsD); deck.position.set(0, 0.15, D / 2 + 2); L.add(deck);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(W2 * 2 + 3, 0.12, 0.12), logsD); rail.position.set(0, 1.1, D / 2 + 4); L.add(rail);
+    for (let k = 0; k <= 8; k++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), logsD); p.position.set(-W2 - 1.5 + k * (W2 * 2 + 3) / 8, 0.6, D / 2 + 4); L.add(p); }
+    // stone chimney
+    const ch = new THREE.Mesh(new THREE.BoxGeometry(1.4, H + 4, 1.4), stone); ch.position.set(W2 * 0.45, (H + 4) / 2, -D / 4); ch.castShadow = true; L.add(ch);
+    const chTop = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.4, 1.7), snow); chTop.position.set(W2 * 0.45, H + 4.1, -D / 4); L.add(chTop);
+    // the name board over the glass
+    const tex = canvasTex(512, 96, (c, w, h) => { c.fillStyle = '#4e3221'; c.fillRect(0, 0, w, h); c.font = '900 56px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#fff4e0'; c.fillText('SNOWCAP LODGE', w / 2, h / 2 + 2); });
+    const board = new THREE.Mesh(new THREE.BoxGeometry(6.5, 1.2, 0.2), [logsD, logsD, logsD, logsD, new THREE.MeshLambertMaterial({ map: tex }), logsD]); board.position.set(0, 2.6 + H * 0.62, D / 2 + 0.6); L.add(board);
+    // skis leaning on the deck
+    for (let k = 0; k < 5; k++) { const sk = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.9, 0.04), new THREE.MeshLambertMaterial({ color: [0xe0186e, 0x2f6fae, 0xffd166, 0xe0186e, 0x3a8a5a][k] })); sk.position.set(-W2 + 0.5 + k * 0.25, 1.1, D / 2 + 3.7); sk.rotation.x = -0.25; L.add(sk); }
+    L.updateMatrixWorld(true);
+    const cw = new THREE.Vector3(W2 * 0.45, H + 4.6, -D / 4).applyMatrix4(L.matrixWorld);
+    (this.chimneys = this.chimneys || []).push({ x: cw.x, y: cw.y, z: cw.z });
+    World.colliders.add({ type: 'circle', x: X, z: Z, r: 9.5, h: 14 });
+    g.add(L);
+  },
+  // ---------- the Ice Arch: a natural arch of blue ice the Glass Lake Loop drives under, at the foot of Frostpeak ----------
+  buildArch(g, rng) {
+    const R = World.roads.find(r => r.id === 'lakeloop'); let p = R.samples[0];
+    for (const q of R.samples) if ((q.x + 166) ** 2 + (q.z + 1201) ** 2 < (p.x + 166) ** 2 + (p.z + 1201) ** 2) p = q;
+    const nx = -p.tz, nz = p.tx, mat = new THREE.MeshStandardMaterial({ color: 0xa6dcf2, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.9, emissive: 0x2a6f8a, emissiveIntensity: 0.3, envMapIntensity: 1.6, flatShading: true });
+    const arch = (span, rise, r0, r1, off, tilt) => {
+      const pts = [], radii = [];
+      for (let k = 0; k <= 24; k++) {
+        const u = k / 24, L = (u * 2 - 1) * span, x = p.x + nx * L + p.tx * off, z = p.z + nz * L + p.tz * off;
+        const y = groundHeight(x, z) * (1 - Math.sin(u * Math.PI)) + (p.y + rise * Math.sqrt(Math.max(0, 1 - (L / span) ** 2))) * Math.sin(u * Math.PI) - 0.5;
+        pts.push(new THREE.Vector3(x + p.tx * tilt * Math.sin(u * Math.PI), y, z + p.tz * tilt * Math.sin(u * Math.PI))); radii.push(lerp(r0, r1, Math.sin(u * Math.PI)) * (0.85 + 0.3 * rng()));
+      }
+      const curve = new THREE.CatmullRomCurve3(pts), N = 60, RS = 9, pos = [], idx = [], fr = curve.computeFrenetFrames(N, false);
+      for (let i = 0; i <= N; i++) { const c = curve.getPointAt(i / N), r = radii[Math.round(i / N * 24)]; for (let j = 0; j < RS; j++) { const a = j / RS * TAU, rr = r * (0.8 + 0.4 * Noise.simplex(i * 0.3, j * 0.9)); const n = fr.normals[i], b = fr.binormals[i]; pos.push(c.x + (n.x * Math.cos(a) + b.x * Math.sin(a)) * rr, c.y + (n.y * Math.cos(a) + b.y * Math.sin(a)) * rr, c.z + (n.z * Math.cos(a) + b.z * Math.sin(a)) * rr); }
+        if (i) for (let j = 0; j < RS; j++) { const A = (i - 1) * RS + j, B = (i - 1) * RS + (j + 1) % RS, C = A + RS, D = B + RS; idx.push(A, C, B, B, C, D); } }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat); m.castShadow = true; g.add(m);
+      for (const u of [0.04, 0.96]) { const f = curve.getPointAt(u); World.colliders.add({ type: 'circle', x: f.x, z: f.z, r: r0 * 1.1, h: 12 }); }
+      return curve;
+    };
+    const main = arch(17, 21, 3.4, 2.1, 0, 0), thin = arch(13, 14, 1.6, 1.0, 6, 3);
+    // icicles hanging from the underside, and big ice blocks round the feet
+    const ic = new THREE.ConeGeometry(0.35, 1, 5); ic.translate(0, -0.5, 0);
+    const icm = new THREE.InstancedMesh(ic, mat, 46), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let k = 0; k < 46; k++) { const cv = k < 32 ? main : thin, u = 0.18 + rng() * 0.64, c = cv.getPointAt(u), len = 1 + rng() * 3.5; sc.set(1 + rng(), len, 1 + rng()); v.set(c.x + (rng() - 0.5) * 1.5, c.y - (k < 32 ? 2.4 : 1.2), c.z + (rng() - 0.5) * 1.5); m4.compose(v, q, sc); icm.setMatrixAt(k, m4); }
+    icm.computeBoundingSphere(); g.add(icm);
+    this.archAt = { x: p.x, z: p.z };
+  },
+  // ---------- the Frozen Falls: a waterfall caught in ice, pouring down Frostpeak's face toward the lake ----------
+  buildFalls(g, rng) {
+    const dx = FROSTPEAK.x - GLASS.x, dz = FROSTPEAK.z - GLASS.z, dl = Math.hypot(dx, dz), ux = dx / dl, uz = dz / dl, sx = -uz, sz = ux;
+    const at = (d) => [GLASS.x + ux * d + sx * 18, GLASS.z + uz * d + sz * 18];
+    let dTop = 150; for (let d = 150; d < dl; d += 2) { const [x, z] = at(d); if (groundHeight(x, z) > 62) { dTop = d; break; } dTop = d; }
+    const d0 = 146, pos = [], col = [], idx = [], NL = 9, c = new THREE.Color(), cA = new THREE.Color(0xeaf7ff), cB = new THREE.Color(0x8fd0ec), cC = new THREE.Color(0x5fb0d8);
+    let n = 0;
+    for (let d = d0; d <= dTop; d += 1.6) {
+      const [x, z] = at(d), w = lerp(10, 6, (d - d0) / (dTop - d0));
+      for (let j = 0; j < NL; j++) {
+        const l = (j / (NL - 1) * 2 - 1), px = x + sx * l * w, pz = z + sz * l * w, bulge = (1 - l * l) * 1.6 + 0.4 * Noise.simplex(d * 0.4, j * 1.3);
+        pos.push(px, groundHeight(px, pz) + 0.3 + bulge, pz);
+        const streak = 0.5 + 0.5 * Noise.simplex(j * 1.7 + 3, d * 0.08); c.copy(cA).lerp(cB, streak * 0.8).lerp(cC, Math.max(0, Noise.simplex(j * 3.1, d * 0.3)) * 0.4);
+        col.push(c.r, c.g, c.b);
+      }
+      if (n) { const a = (n - 1) * NL; for (let j = 0; j < NL - 1; j++) idx.push(a + j, a + NL + j, a + j + 1, a + j + 1, a + NL + j, a + NL + j + 1); }
+      n++;
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+    let up = 0; const nr = geo.attributes.normal; for (let i = 0; i < nr.count; i += 5) up += nr.getY(i);
+    if (up < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } geo.setIndex(idx); geo.computeVertexNormals(); }
+    const falls = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.1, metalness: 0, emissive: 0x214f66, emissiveIntensity: 0.35, envMapIntensity: 1.5, flatShading: true }));
+    falls.castShadow = true; falls.receiveShadow = true; g.add(falls);
+    // the frozen splash at the foot: a mound of ice and a ring of icicle spikes
+    const [bx, bz] = at(d0), by = groundHeight(bx, bz);
+    const mound = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8, 0, TAU, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xcdeefa, roughness: 0.12, emissive: 0x1d4a60, emissiveIntensity: 0.3, flatShading: true }));
+    mound.scale.set(9, 3.2, 7); mound.position.set(bx, by - 0.4, bz); g.add(mound);
+    const sp = new THREE.ConeGeometry(0.5, 1, 6); sp.translate(0, 0.5, 0);
+    const sm = new THREE.InstancedMesh(sp, falls.material, 18), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let k = 0; k < 18; k++) { const a = rng() * TAU, r = 3 + rng() * 6; e.set((rng() - 0.5) * 0.5, 0, (rng() - 0.5) * 0.5); q.setFromEuler(e); sc.set(1 + rng(), 2 + rng() * 5, 1 + rng()); v.set(bx + Math.cos(a) * r, groundHeight(bx + Math.cos(a) * r, bz + Math.sin(a) * r) - 0.3, bz + Math.sin(a) * r); m4.compose(v, q, sc); sm.setMatrixAt(k, m4); }
+    sm.computeBoundingSphere(); g.add(sm);
+  },
+  update(dt, game) {
+    if (!this.ready) return;
+    this.t += dt;
+    const cam = game.camera.position, env = game.env, L = env.L, d = Math.hypot(cam.x - FROST.x, cam.z - FROST.z);
+    this.g.visible = d - FROST.r < env.scene.fog.far * 0.9;
+    const target = cam.y < 160 ? smooth(FROST.r + 220, FROST.r - 60, d) : 0;
+    this.k += (target - this.k) * Math.min(1, dt * 1.5); if (this.k < 0.002) this.k = 0;
+    const k = this.k;
+    // snowfall: flakes wrap round the camera, drifting down and sideways
+    this.flakes.visible = k > 0.02;
+    if (this.flakes.visible) {
+      const a = this.flakes.geometry.attributes.position, o = this.flakeOff, t = this.t, fall = t * 1.7, wx = Math.sin(t * 0.3) * 2.2 + 1.2;
+      const cx = cam.x - 60, cy = cam.y - 22, cz = cam.z - 60;
+      for (let i = 0; i < this.flakeN; i++) {
+        const sway = Math.sin(t * 1.3 + i) * 0.6;
+        a.setXYZ(i, cx + ((o[i * 3] - cam.x + t * wx + sway) % 120 + 120) % 120, cy + ((o[i * 3 + 1] - fall - cam.y * 0.0) % 60 + 60) % 60, cz + ((o[i * 3 + 2] - cam.z + sway * 0.7) % 120 + 120) % 120);
+      }
+      a.needsUpdate = true; this.flakes.material.opacity = 0.9 * Math.min(1, k * 1.4);
+    }
+    if (this.g.visible) {
+      const a = this.smoke.geometry.attributes.position;
+      this.puffs.forEach((p, i) => { const u = (p.t + this.t * (p.ch.small ? 0.25 : 0.12)) % 1, rise = u * (p.ch.small ? 5 : 14); a.setXYZ(i, p.ch.x + Math.sin(u * 5 + i) * 0.6 + u * 3, p.ch.y + rise, p.ch.z + Math.cos(u * 4 + i) * 0.5); });
+      a.needsUpdate = true;
+    }
+    // cold haze: paler, closer fog over the island (only while near; restored exactly when you leave)
+    if (L && (k > 0 || this.wasIn) && Cave.k <= 0) {
+      const f = env.scene.fog; f.color.lerp(this._c || (this._c = new THREE.Color(0xdfe8f1)), 0.6 * k);
+      f.near = L.fogNear * lerp(1, 0.55, k); f.far = L.fogFar * lerp(1, 0.72, k);
+      this.wasIn = k > 0;
+    }
+    Sound.winter && Sound.winter(k, dt);
+  },
+};
+
+// ============================================================
+//  Mount Ember (v13.3)
+//  LavaTube: the road into the volcano. From the summit terrace at the top of Ember Road an underground deck
+//  (31_decks.js, `under: true`) corkscrews down round a glowing magma chamber and comes out at the foot of the
+//  south face. This builds the bore round it: basalt walls with glowing veins, lava running in troughs either
+//  side of the road, windows in the inner wall looking into the magma chamber (a lava pool, a rising column of
+//  magma, lava falls down its walls), and rock portals at both ends. Inside, the light turns red-black.
+//  Volcano: everything on the island itself (further down).
+// ============================================================
+const LAVA_GLOW = new THREE.Color(0xff5a1a);
+// a seamless lava texture: molten orange with hotter swirls and drifting plates of dark crust
+function lavaTexture(S, plates, seed, crust = 1) {
+  const R = makeRng(seed);
+  const t = canvasTex(S, S, (c, w, h) => {
+    c.fillStyle = '#ff7412'; c.fillRect(0, 0, w, h);
+    const wrap = (fn) => { for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) fn(ox, oy); };
+    const blob = (x, y, r, col) => wrap((ox, oy) => { const g = c.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); g.addColorStop(0, col); g.addColorStop(1, 'rgba(255,110,20,0)'); c.fillStyle = g; c.fillRect(x + ox - r, y + oy - r, r * 2, r * 2); });
+    for (let i = 0; i < 34; i++) blob(R() * w, R() * h, w * (0.05 + R() * 0.12), 'rgba(255,232,120,0.75)');
+    for (let i = 0; i < 24; i++) blob(R() * w, R() * h, w * (0.05 + R() * 0.1), 'rgba(190,34,6,0.5)');
+    for (let i = 0; i < plates; i++) {
+      const x = R() * w, y = R() * h, r = w * (0.025 + R() * 0.06) * crust, n = 5 + Math.floor(R() * 3), a0 = R() * TAU, pts = [];
+      for (let k = 0; k < n; k++) { const a = a0 + k / n * TAU, rr = r * (0.6 + R() * 0.5); pts.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+      const sh = 16 + Math.floor(R() * 26);
+      wrap((ox, oy) => { c.beginPath(); pts.forEach(([px, py], k) => k ? c.lineTo(x + ox + px, y + oy + py) : c.moveTo(x + ox + px, y + oy + py)); c.closePath(); c.fillStyle = `rgba(${sh + 34},${sh + 2},${sh - 4},0.93)`; c.fill(); c.strokeStyle = 'rgba(255,190,80,0.6)'; c.lineWidth = 1.4; c.stroke(); });
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+// Lambert with vertex colours plus an orange emissive term from a per-vertex 'glow' attribute (lava light)
+function lavaGlowMat(opts = {}) {
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: opts.side ?? THREE.FrontSide });
+  m.userData.uGlow = { value: 1 };
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uGlow = m.userData.uGlow; sh.uniforms.uGlowC = { value: LAVA_GLOW };
+    sh.vertexShader = 'attribute float glow; varying float vGlow;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGlow = glow;');
+    sh.fragmentShader = 'uniform float uGlow; uniform vec3 uGlowC; varying float vGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += uGlowC * vGlow * uGlow;');
+  };
+  m.customProgramCacheKey = () => 'lavaglow' + (opts.side ?? 0);
+  return m;
+}
+// one strip of geometry along deck samples: cols(p, i) gives [[L, Y, glow?], ...] across, coloured by colour(x, y, z, j)
+function stripGeo(S, i0, i1, cols, colour, keep) {
+  const pos = [], col = [], glow = [], uv = [], idx = [], c = new THREE.Color();
+  let n = 0, w = 0;
+  for (let i = i0; i <= i1; i++) {
+    const p = S[i], row = cols(p, i); w = row.length;
+    row.forEach(([L, Y, gl], j) => { const x = p.x - p.tz * L, y = p.y + Y, z = p.z + p.tx * L; pos.push(x, y, z); colour(c, x, y, z, j, p); col.push(c.r, c.g, c.b); glow.push(gl || 0); uv.push(j / (row.length - 1), p.s / 8); });
+    if (n) { const a = (n - 1) * w; for (let j = 0; j < w - 1; j++) if (!keep || keep(i - 1, j)) idx.push(a + j, a + w + j, a + j + 1, a + j + 1, a + w + j, a + w + j + 1); }
+    n++;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('glow', new THREE.Float32BufferAttribute(glow, 1)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+const LavaTube = {
+  deck: null, k: 0, inside: false, t: 0,
+  floorDy(p, l) { const c = this.deck.channel, al = Math.abs(l); return (al > c.flat ? c.k * (al - c.flat) * (al - c.flat) : 0) * (p.cw === undefined ? 1 : p.cw) + (p.bk || 0) * l; },
+  worldPt(p, L, Y) { return [p.x - p.tz * L, p.y + Y, p.z + p.tx * L]; },
+  // which side (+1 = left, L > 0) faces the middle of the mountain
+  innerSide(p) { return ((EMBER.x - p.x) * -p.tz + (EMBER.z - p.z) * p.tx) > 0 ? 1 : -1; },
+  // cross-section at a sample, [L, Y] from L < 0 over the roof to L > 0: kerb, lava trough, wall, arch, wall, trough, kerb
+  ring(p) {
+    const d = this.deck, hw = d.halfW + 0.5, C = LAVA_TUBE.size(), K = 16, out = [];
+    const rl = this.floorDy(p, -hw), rr = this.floorDy(p, hw);
+    out.push([-hw, rl], [-(hw + 0.3), rl - 1.2], [-(hw + 2.0), rl - 1.2], [-(hw + 2.4), rl + 0.5]);
+    for (let k = 0; k <= K; k++) { const th = k / K * Math.PI, base = lerp(rl, rr, (1 - Math.cos(th)) / 2) + 0.6; out.push([-C.hw * Math.cos(th), base + (C.top - base) * Math.sin(th)]); }
+    out.push([hw + 2.4, rr + 0.5], [hw + 2.0, rr - 1.2], [hw + 0.3, rr - 1.2], [hw, rr]);
+    return out;
+  },
+  build(scene, d) {
+    this.deck = d; this.scene = scene;
+    const M = caveDeckMouths(d); this.sE = M.sE; this.sW = M.sW;
+    const S = d.samples, rng = makeRng(5151);
+    this.inner = new THREE.Group(); this.inner.name = 'lavaInner'; scene.add(this.inner);
+    this.outer = new THREE.Group(); this.outer.name = 'lavaOuter'; scene.add(this.outer);
+    const i0 = S.findIndex(p => p.s >= this.sE - 2), i1 = S.length - 1 - [...S].reverse().findIndex(p => p.s <= this.sW + 2);
+    this.i0 = i0; this.i1 = i1;
+    this.lavaTex = lavaTexture(256, 22, 77); this.lavaTex.repeat.set(1, 1);
+    this.lavaMat = new THREE.MeshBasicMaterial({ map: this.lavaTex, color: 0xffffff });
+    this.markWindows(S, i0, i1);
+    this.buildFloor(S);
+    this.buildTube(S, i0, i1);
+    this.buildTroughs(S, i0, i1);
+    this.buildChamber(rng);
+    this.buildFalls(S, i0, i1, rng);
+    this.buildPortals(S, rng);
+    bakeStatic([...this.outer.children], this.outer);
+    this.inner.userData.dynamic = this.outer.userData.dynamic = true; // (keep the world's bake pass off them: they show/hide and glow by themselves)
+    // rim colliders: nothing climbs out over the lava troughs
+    for (const sg of [-1, 1]) for (let i = 0; i < S.length - 1; i++) {
+      const p = S[i], q = S[i + 1]; if (p.s < this.sE - 20 || p.s > this.sW + 20) continue;
+      const hw = d.halfW + 0.35, ox = -p.tz * sg * hw, oz = p.tx * sg * hw, dx = q.x - p.x, dz = q.z - p.z, len = Math.hypot(dx, dz);
+      const top = Math.max(p.y, q.y) + Math.max(this.floorDy(p, sg * hw), this.floorDy(q, sg * hw)) + 1.6;
+      World.colliders.add({ type: 'box', x: (p.x + q.x) / 2 + ox, z: (p.z + q.z) / 2 + oz, hx: len / 2 + 0.1, hz: 0.4, rot: Math.atan2(-dz, dx), y0: Math.min(p.y, q.y) - 1, y1: top });
+    }
+    this.ready = true;
+  },
+  // windows in the inner wall onto the magma chamber: every ~42 m round the lower part of the corkscrew
+  markWindows(S, i0, i1) {
+    const ch = LAVA_TUBE.chamber;
+    for (let i = i0; i <= i1; i++) {
+      const p = S[i], r = Math.hypot(p.x - EMBER.x, p.z - EMBER.z);
+      p.win = r < 62 && p.y > ch.y0 + 3 && p.y < ch.y1 - 9 && (p.s % 42) < 15 ? 1 : 0;
+    }
+  },
+  veins(x, y, z) { const n = Math.abs(Noise.simplex(x / 6 + y / 9, z / 6 - y / 7)); return smooth(0.12, 0.0, n) * 0.55; },
+  // floor: the deck's channel profile, dark basalt with a paler worn track and glowing cracks
+  buildFloor(S) {
+    const d = this.deck, hw = d.halfW + 0.5, nl = 17, base = new THREE.Color(0x2a2423), track = new THREE.Color(0x46403b), crack = new THREE.Color(0x5a2a16);
+    const g = stripGeo(S, 0, S.length - 1, (p) => Array.from({ length: nl }, (_, j) => { const L = -hw + 2 * hw * j / (nl - 1); const out = p.s < this.sE - 4 || p.s > this.sW + 4; const w = this.worldPt(p, L, 0); return [L, this.floorDy(p, L) + 0.03, out ? 0 : this.veins(w[0], w[1], w[2]) * 0.6]; }),
+      (c, x, y, z, j) => { const L = -hw + 2 * hw * j / (nl - 1), n = Noise.simplex(x / 4, z / 4); c.copy(base).lerp(track, smooth(d.channel.flat + 0.6, d.channel.flat - 1.4, Math.abs(L)) * (0.6 + 0.3 * n)).lerp(crack, this.veins(x, y, z)); });
+    let up = 0; const nr = g.attributes.normal; for (let i = 0; i < nr.count; i += 7) up += nr.getY(i);
+    if (up < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } g.computeVertexNormals(); }
+    const m = new THREE.Mesh(g, this.floorMat = lavaGlowMat()); m.receiveShadow = true; m.userData.dynamic = true; this.outer.add(m);
+    // orange studs down both edges of the track
+    const studs = []; for (const p of S) { if (p.s < this.sE - 8 || p.s > this.sW + 8 || Math.round(p.s / 2.5) % 3) continue; for (const sg of [-1, 1]) studs.push(this.worldPt(p, sg * (d.channel.flat + 0.3), this.floorDy(p, sg * (d.channel.flat + 0.3)) + 0.06)); }
+    const sm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.24, 0.07, 0.24), new THREE.MeshBasicMaterial({ color: 0xffa040 }), studs.length), m4 = new THREE.Matrix4();
+    studs.forEach((q, k) => { m4.makeTranslation(q[0], q[1], q[2]); sm.setMatrixAt(k, m4); }); sm.computeBoundingSphere(); this.inner.add(sm);
+  },
+  // the bore: rough basalt, glowing veins, brighter low down where the lava troughs light it
+  buildTube(S, i0, i1) {
+    const rA = new THREE.Color(0x26201f), rB = new THREE.Color(0x3a3130), soot = new THREE.Color(0x141112), hot = new THREE.Color(0x6a2a14);
+    const n = this.ring(S[i0]).length, K = 16;
+    const g = stripGeo(S, i0, i1, (p) => {
+      const R = this.ring(p), cx = 0, cyM = this.floorDy(p, 0) + 4;
+      return R.map(([L, Y], k) => {
+        const edge = k === 0 || k === n - 1, trough = k < 4 || k > n - 5;
+        let dl = L - cx, dy = Y - cyM; const dl2 = Math.hypot(dl, dy) || 1;
+        const amp = edge || trough ? 0 : 1.2 * (k < 6 || k > n - 7 ? 0.5 : 1);
+        const nz = amp * Noise.fbm(p.s / 7 + k * 0.37, k * 0.61 + 9, 3);
+        L += dl / dl2 * nz; Y += dy / dl2 * nz;
+        const w = this.worldPt(p, L, Y), low = smooth(5, 0.5, Y - this.floorDy(p, L));
+        return [L, Y, Math.min(0.8, this.veins(w[0], w[1], w[2]) * 0.8 + low * 0.28 + (trough ? 0.35 : 0))];
+      });
+    }, (c, x, y, z, j) => { const nn = Noise.simplex(x / 4 + 3, z / 4 + y / 4); c.copy(rA).lerp(rB, 0.5 + 0.5 * nn).lerp(soot, Math.max(0, Noise.simplex(x / 13, y / 9)) * 0.5).lerp(hot, this.veins(x, y, z)); },
+    (i, j) => { // skip the inner wall where there's a window onto the chamber
+      const p = this.deck.samples[i], q = this.deck.samples[i + 1]; if (!(p.win && q.win)) return true;
+      const a = j - 4; if (a < 0 || a > K) return true; // troughs and kerbs stay
+      return this.innerSide(p) < 0 ? a > 4 : a < K - 4;
+    });
+    const m = new THREE.Mesh(g, this.wallMat = lavaGlowMat({ side: THREE.DoubleSide })); m.receiveShadow = true;
+    this.inner.add(m); this.tube = m;
+    // rough rock pillars at the edges of each window
+    const list = [];
+    for (let i = i0 + 1; i < i1; i++) {
+      const p = S[i], q = S[i - 1]; if (p.win === q.win) continue;
+      const sg = this.innerSide(p), R = this.ring(p);
+      for (let k = 0; k < 4; k++) { const [L, Y] = R[sg < 0 ? 4 + k : 4 + K - k]; list.push(this.worldPt(p, L * 0.97, Y)); }
+    }
+    if (list.length) {
+      const pm = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x2d2524, flatShading: true }), list.length), m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3(), rr = makeRng(91);
+      list.forEach(([x, y, z], k) => { e.set(rr() * 3, rr() * 3, rr() * 3); qq.setFromEuler(e); const s = 1.4 + rr() * 1.2; sc.set(s, s * 1.4, s); v.set(x, y, z); m4.compose(v, qq, sc); pm.setMatrixAt(k, m4); });
+      pm.computeBoundingSphere(); this.inner.add(pm);
+    }
+  },
+  // lava running down a trough either side of the road (it comes out with you at the bottom)
+  buildTroughs(S, i0, i1) {
+    const hw = this.deck.halfW + 0.5, a = Math.max(0, i0 - 2), b = S.length - 1;
+    for (const sg of [-1, 1]) {
+      const g = stripGeo(S, a, b, (p) => { const ry = this.floorDy(p, sg * hw) - 0.75; return [[sg * (hw + 0.25), ry], [sg * (hw + 1.15), ry + 0.08], [sg * (hw + 2.05), ry]]; }, (c) => c.setRGB(1, 1, 1));
+      const m = new THREE.Mesh(g, this.lavaMat); m.userData.dynamic = true; (sg < 0 ? this.inner : this.inner).add(m);
+    }
+  },
+  // ---------- the magma chamber under the crater ----------
+  buildChamber(rng) {
+    const ch = LAVA_TUBE.chamber, X = EMBER.x, Z = EMBER.z, H = ch.y1 - ch.y0;
+    const g = new THREE.Group(); g.name = 'chamber'; this.inner.add(g); this.chamber = g;
+    // walls (seen from inside only: from the tube the near side vanishes and you look straight across)
+    const wg = new THREE.CylinderGeometry(ch.r, ch.r * 1.04, H, 56, 10, true).toNonIndexed();
+    const pos = wg.attributes.position, col = new Float32Array(pos.count * 3), glow = new Float32Array(pos.count), c = new THREE.Color(), rA = new THREE.Color(0x2b2120), rB = new THREE.Color(0x45302a);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), a = Math.atan2(z, x);
+      const lump = 1 + 0.06 * Noise.fbm(a * 3, y / 9, 3); pos.setX(i, x * lump); pos.setZ(i, z * lump);
+      const v = this.veins(x + X, y, z + Z), low = smooth(H * 0.15, -H * 0.5, y);
+      c.copy(rA).lerp(rB, 0.5 + 0.5 * Noise.simplex(a * 4, y / 6)); col.set([c.r, c.g, c.b], i * 3); glow[i] = Math.min(1, 0.14 + v * 1.7 + low * 0.95);
+    }
+    wg.setAttribute('color', new THREE.BufferAttribute(col, 3)); wg.setAttribute('glow', new THREE.BufferAttribute(glow, 1)); wg.computeVertexNormals();
+    const wall = new THREE.Mesh(wg, this.chamberMat = lavaGlowMat({ side: THREE.BackSide })); wall.position.set(X, ch.y0 + H / 2, Z); g.add(wall);
+    // the dome over it (just under the crater's lava lake)
+    const dg = new THREE.SphereGeometry(ch.r * 1.04, 40, 8, 0, TAU, 0, Math.PI / 2).toNonIndexed(); dg.scale(1, (ch.dome - ch.y1) / (ch.r * 1.04), 1);
+    const dp = dg.attributes.position, dc = new Float32Array(dp.count * 3), dgl = new Float32Array(dp.count);
+    for (let i = 0; i < dp.count; i++) { c.copy(rA).lerp(rB, 0.5 + 0.5 * Noise.simplex(dp.getX(i) / 9, dp.getZ(i) / 9)); dc.set([c.r, c.g, c.b], i * 3); dgl[i] = this.veins(dp.getX(i) + X, dp.getY(i), dp.getZ(i) + Z) * 1.2 + 0.12; }
+    dg.setAttribute('color', new THREE.BufferAttribute(dc, 3)); dg.setAttribute('glow', new THREE.BufferAttribute(dgl, 1)); dg.computeVertexNormals();
+    const dome = new THREE.Mesh(dg, this.chamberMat); dome.position.set(X, ch.y1, Z); g.add(dome);
+    // the lava pool on the floor
+    this.poolTex = lavaTexture(512, 60, 31, 1.6); this.poolTex.repeat.set(5, 5);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(ch.r * 1.05, 48), this.poolMat = new THREE.MeshBasicMaterial({ map: this.poolTex })); pool.rotation.x = -Math.PI / 2; pool.position.set(X, ch.y0 + 0.5, Z); g.add(pool);
+    // the conduit: a column of magma rising from the pool through the dome to the crater above
+    this.colTex = lavaTexture(256, 10, 13, 0.7); this.colTex.repeat.set(3, 2);
+    const colm = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 10, ch.dome - ch.y0 + 2, 20, 1, true), this.colMat = new THREE.MeshBasicMaterial({ map: this.colTex }));
+    colm.position.set(X, (ch.y0 + ch.dome) / 2, Z); g.add(colm);
+    // lava falls pouring down the chamber walls into the pool
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * TAU + rng() * 0.4, w = 3 + rng() * 3, h = H * (0.55 + rng() * 0.4), top = ch.y1 - rng() * 6;
+      const fg = new THREE.PlaneGeometry(w, h, 1, 8); const fp = fg.attributes.position;
+      for (let i = 0; i < fp.count; i++) { const yy = fp.getY(i); fp.setZ(i, 1.2 * Math.pow(Math.max(0, (h / 2 - yy) / h), 1.6) * 3); } // a little curve out from the wall at the bottom
+      fg.computeVertexNormals();
+      const f = new THREE.Mesh(fg, this.fallMat || (this.fallMat = new THREE.MeshBasicMaterial({ map: this.colTex, side: THREE.DoubleSide })));
+      const r = ch.r - 0.6; f.position.set(X + Math.cos(a) * r, top - h / 2, Z + Math.sin(a) * r); f.lookAt(X, top - h / 2, Z); g.add(f);
+    }
+    // stalactites of black glass hanging from the dome
+    const st = new THREE.ConeGeometry(0.9, 1, 5); st.translate(0, -0.5, 0);
+    const sm = new THREE.InstancedMesh(st, new THREE.MeshStandardMaterial({ color: 0x120e12, roughness: 0.25, metalness: 0.2, flatShading: true }), 60), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let k = 0; k < 60; k++) { const a = rng() * TAU, r = 12 + rng() * (ch.r - 14), yy = ch.y1 + (ch.dome - ch.y1) * Math.sqrt(Math.max(0, 1 - (r / ch.r) ** 2)) - 0.3; sc.set(1 + rng(), 3 + rng() * 9, 1 + rng()); v.set(X + Math.cos(a) * r, yy, Z + Math.sin(a) * r); m4.compose(v, q, sc); sm.setMatrixAt(k, m4); }
+    sm.computeBoundingSphere(); g.add(sm);
+    // a heat glow over the pool
+    const gt = canvasTex(64, 64, (c2, w, h) => { const gr = c2.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(255,150,60,0.6)'); gr.addColorStop(1, 'rgba(255,80,20,0)'); c2.fillStyle = gr; c2.fillRect(0, 0, w, h); });
+    const glowS = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); glowS.position.set(X, ch.y0 + 10, Z); glowS.scale.set(90, 40, 1); g.add(glowS);
+  },
+  // a few thin falls of lava from cracks in the roof into the troughs
+  buildFalls(S, i0, i1, rng) {
+    const hw = this.deck.halfW + 0.5, C = LAVA_TUBE.size();
+    for (let i = i0 + 20; i < i1 - 20; i += 38 + Math.floor(rng() * 20)) {
+      const p = S[i], sg = -this.innerSide(p), ry = this.floorDy(p, sg * (hw + 1.1)) - 0.7, w = this.worldPt(p, sg * (hw + 1.1), ry);
+      const top = p.y + C.top * 0.82, h = top - w[1];
+      const f = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.5, h, 6, 1, true), this.fallMat || (this.fallMat = new THREE.MeshBasicMaterial({ map: this.colTex, side: THREE.DoubleSide })));
+      f.position.set(w[0], w[1] + h / 2, w[2]); this.inner.add(f);
+    }
+  },
+  // ---------- rock portals over the two mouths ----------
+  buildPortals(S, rng) {
+    const d = this.deck, C = LAVA_TUBE.size(), rock = new THREE.MeshLambertMaterial({ color: 0x3a3232, flatShading: true }), list = [];
+    const iron = new THREE.MeshLambertMaterial({ color: 0x2a2626, flatShading: true }), stripe = canvasTex(64, 16, (c, w, h) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#1b1b1f' : '#ffb21a'; c.beginPath(); c.moveTo(i * 8 - 8, h); c.lineTo(i * 8, 0); c.lineTo(i * 8 + 8, 0); c.lineTo(i * 8, h); c.fill(); } });
+    stripe.wrapS = THREE.RepeatWrapping; stripe.repeat.set(4, 1);
+    for (const [sM, dir] of [[this.sE, -1], [this.sW, 1]]) {
+      const iM = S.findIndex(p => p.s >= sM), p = S[iM], R = this.ring(p), n = R.length;
+      // face: a rough collar from the bore out into the hillside
+      const pos = [], idx = [];
+      for (let k = 0; k < n; k++) {
+        const [L, Y] = R[k], base = this.floorDy(p, 0) + 0.4, dy = Math.max(Y - base, 0);
+        const grow = 1 + (6 + 3 * Noise.simplex(k * 0.7, sM)) / Math.max(4, Math.hypot(L, dy));
+        const L2 = L * grow, Y2 = base + dy * grow + (k === 0 || k === n - 1 ? -1.5 : 1.5);
+        for (const [l, y, off] of [[L, Y, 0], [L2, Y2, -dir * 1.2]]) { const w = this.worldPt(p, l, y); pos.push(w[0] - p.tx * off, w[1], w[2] - p.tz * off); }
+        if (k) { const a = (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      this.outer.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x352d2d, flatShading: true, side: THREE.DoubleSide })));
+      // hood: a rock skin over the terrain hole that follows the hillside but arches over the tunnel
+      const Hh = World.holes.find(h => h.def === LAVA_TUBE && Math.hypot(h.x - p.x, h.z - p.z) < 20);
+      if (Hh) {
+        const hp = [], hi = [], NA = 16, NL = 16, tuck = [], arc = [];
+        for (let a = 0; a <= NA; a++) for (let l = 0; l <= NL; l++) {
+          const al = -Hh.hl - 2 + (2 * Hh.hl + 4) * a / NA, lt = -Hh.hw - 3 + (2 * Hh.hw + 6) * l / NL;
+          const x = Hh.x + Hh.tx * al - Hh.tz * lt, z = Hh.z + Hh.tz * al + Hh.tx * lt;
+          let y = groundHeight(x, z) + 0.35;
+          const inward = ((x - p.x) * p.tx + (z - p.z) * p.tz) * -dir; // + = into the hill
+          const tk = Math.abs(lt) < d.halfW + 3.2 && inward <= -1.5, ar = Math.abs(lt) < C.hw + 1.5 && inward > -1.5;
+          if (tk) y = p.y - 1.8;
+          tuck.push(tk); arc.push(ar);
+          if (ar) { const arch = p.y + 0.4 + C.top * Math.sqrt(Math.max(0, 1 - (lt / (C.hw + 1.5)) ** 2)) + 1.6; y = Math.max(y, arch); }
+          hp.push(x, y, z);
+          if (a && l) { const A = (a - 1) * (NL + 1) + l - 1, B = A + 1, Cc = A + NL + 1, D = Cc + 1; const q4 = [A, B, Cc, D]; if (!(q4.some(i => tuck[i]) && q4.some(i => arc[i]))) hi.push(A, Cc, B, B, Cc, D); }
+        }
+        const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3)); hg.setIndex(hi); hg.computeVertexNormals();
+        this.outer.add(new THREE.Mesh(hg, new THREE.MeshLambertMaterial({ color: 0x3d3434, flatShading: true, side: THREE.DoubleSide })));
+      }
+      // boulders round the face to hide the seams
+      for (let b = 0; b < 16; b++) {
+        const th = rng() * Math.PI, rr = C.hw + 2 + rng() * 4, L = Math.cos(th) * rr, Y = Math.sin(th) * (C.top + 2) - 1;
+        const w = this.worldPt(p, L, Y); list.push([w[0] - p.tx * dir * 1.5, w[1], w[2] - p.tz * dir * 1.5, 2 + rng() * 3]);
+      }
+      // an iron gateway frame with hazard stripes, glowing lamps and a sign
+      const q = S[Math.max(0, Math.min(S.length - 1, iM - dir * 3))], yaw = Math.atan2(q.tx, q.tz), px = d.halfW + 1.2, top = C.top - 2.2;
+      const gg = new THREE.Group(); gg.position.set(q.x, q.y, q.z); gg.rotation.y = yaw;
+      for (const sg of [-1, 1]) { const fy = this.floorDy(q, sg * px); const post = new THREE.Mesh(new THREE.BoxGeometry(0.6, top - fy + 0.5, 0.6), iron); post.position.set(sg * px, fy + (top - fy + 0.5) / 2 - 0.25, 0); gg.add(post); }
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(px * 2 + 1.2, 0.9, 0.7), [iron, iron, iron, iron, new THREE.MeshLambertMaterial({ map: stripe }), new THREE.MeshLambertMaterial({ map: stripe })]); beam.position.set(0, top + 0.2, 0); gg.add(beam);
+      const tex = canvasTex(512, 128, (c, w, h) => { c.fillStyle = '#1d1716'; c.fillRect(0, 0, w, h); c.strokeStyle = '#ffb21a'; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12);
+        c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '900 62px Georgia, serif'; c.fillStyle = '#ff8a2a'; c.fillText(dir < 0 ? 'LAVA TUBE' : 'MOUNT EMBER', w / 2, h / 2 + 2); });
+      const sm = new THREE.MeshLambertMaterial({ map: tex, emissive: 0xff6a20, emissiveMap: tex, emissiveIntensity: 0.55 });
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(7.5, 1.9, 0.15), [iron, iron, iron, iron, dir > 0 ? sm : iron, dir < 0 ? sm : iron]); sign.position.set(0, top - 1.2, dir * -0.1); gg.add(sign);
+      this.outer.add(gg);
+      for (const sg of [-1, 1]) { const w = this.worldPt(q, sg * (px + 0.1), top + 1.0); (this.lamps = this.lamps || []).push(w); }
+    }
+    const bg = new THREE.DodecahedronGeometry(1, 0);
+    const bm = new THREE.InstancedMesh(bg, rock, list.length), m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    list.forEach(([x, y, z, r], k) => { e.set(rng() * 3, rng() * 3, rng() * 3); qq.setFromEuler(e); sc.set(r, r * (0.6 + rng() * 0.5), r * (0.8 + rng() * 0.4)); v.set(x, y, z); m4.compose(v, qq, sc); bm.setMatrixAt(k, m4); });
+    bm.computeBoundingSphere(); this.outer.add(bm);
+    // warning lamps: little orange glows on the gateways
+    const lt = canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(255,230,170,1)'); g.addColorStop(0.3, 'rgba(255,150,40,0.8)'); g.addColorStop(1, 'rgba(255,90,10,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+    this.lampSprites = (this.lamps || []).map(([x, y, z]) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: lt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); s.position.set(x, y, z); s.scale.set(1.6, 1.6, 1); this.outer.add(s); return s; });
+  },
+  // ============================================================
+  //  per frame
+  // ============================================================
+  where(v) { if (!v || v.onDeck !== this.deck) return null; const p = this.deck.samples[v.deckI || 0]; return p ? p.s : null; },
+  update(dt, game) {
+    if (!this.ready) return;
+    this.t += dt;
+    const P = game.player, cam = game.camera.position, s = this.where(P);
+    const target = s === null ? 0 : smooth(this.sE - 6, this.sE + 26, s) * (1 - smooth(this.sW - 26, this.sW + 6, s));
+    this.k += (target - this.k) * Math.min(1, dt * 2.5); if (this.k < 0.002) this.k = 0;
+    this.inside = s !== null && s > this.sE - 2 && s < this.sW + 2;
+    const dE = Math.hypot(cam.x - EMBER.x, cam.z - EMBER.z);
+    const nearMouth = [this.sE, this.sW].some(sm => { const q = this.deck.samples.find(p => p.s >= sm) || this.deck.samples[0]; return Math.hypot(cam.x - q.x, cam.z - q.z) < 140; });
+    this.inner.visible = this.k > 0 || nearMouth;
+    this.outer.visible = dE - EMBER.base < game.env.scene.fog.far * 0.85 + 60;
+    if (this.inner.visible) {
+      const pulse = 0.85 + 0.15 * Math.sin(this.t * 1.6);
+      this.wallMat.userData.uGlow.value = pulse; this.floorMat.userData.uGlow.value = pulse; this.chamberMat.userData.uGlow.value = 0.9 + 0.2 * Math.sin(this.t * 0.9);
+      this.lavaTex.offset.y = -this.t * 0.22;           // the troughs run downhill with you
+      this.poolTex.offset.set(Math.sin(this.t * 0.05) * 0.3, this.t * 0.01);
+      this.colTex.offset.y = -this.t * 0.18;            // the column wells up, the falls pour down (shared texture)
+    }
+    if (this.outer.visible && this.lampSprites) this.lampSprites.forEach((sp, k) => { const f = 0.7 + 0.3 * (Math.sin(this.t * 6 + k * 1.7) > 0 ? 1 : 0.35); sp.scale.set(1.6 * f, 1.6 * f, 1); });
+    this.light(game);
+  },
+  // inside: no sun, a dull red ambient, a short smoky fog, headlights on, a shorter view
+  light(game) {
+    const env = game.env, L = env.L, k = this.k, cam = game.camera;
+    if (!L) return;
+    if (k <= 0 && !this.wasIn) return;
+    env.sun.intensity = L.sunI * (1 - k);
+    env.hemi.intensity = lerp(L.hemiI, 0.5, k);
+    env.hemi.color.set(L.hemiSky).lerp(this._c1 || (this._c1 = new THREE.Color(0x8a3a1c)), k);
+    env.hemi.groundColor.set(L.hemiGround).lerp(this._c2 || (this._c2 = new THREE.Color(0x2a0c04)), k);
+    const f = env.scene.fog; f.color.lerp(this._c3 || (this._c3 = new THREE.Color(0x1a0805)), k); f.near = lerp(L.fogNear, 18, k); f.far = lerp(L.fogFar, 240, k);
+    if ('environmentIntensity' in env.scene) env.scene.environmentIntensity = lerp(1, 0.15, k);
+    Atmos.caveK = k;
+    const deep = k > 0.95 && this.inside, far = deep ? 330 : 3200; if (cam.far !== far) { cam.far = far; cam.updateProjectionMatrix(); }
+    const sm = game.renderer.shadowMap; if (sm.autoUpdate === deep) { sm.autoUpdate = !deep; sm.needsUpdate = true; }
+    this.wasIn = k > 0;
+  },
+  // solid walls: inside the mountain a car can't get further off the centreline than the edge of the road deck
+  contain(V) {
+    if (!this.deck || Math.abs(V.pos.x - EMBER.x) > 280 || Math.abs(V.pos.z - EMBER.z) > 280) return;
+    let hit = null;
+    deckHits(V.pos.x, V.pos.z, (y, d, i, t, lat) => { if (d === this.deck && Math.abs(y - V.pos.y) < 8 && (!hit || lat < hit.lat)) hit = { i, t, lat }; }, 22);
+    if (!hit) return;
+    const S = this.deck.samples, a = S[hit.i], b = S[Math.min(hit.i + 1, S.length - 1)];
+    if (a.s < this.sE - 3 || a.s > this.sW + 3) return;
+    if (V.pos.y > a.y + LAVA_TUBE.size().top + 3) return; // up on the mountain over it: not our business
+    const ex = b.x - a.x, ez = b.z - a.z, L = Math.hypot(ex, ez) || 1, tx = ex / L, tz = ez / L, tc = clamp(hit.t, 0, 1);
+    const px = a.x + ex * tc, pz = a.z + ez * tc, sl = (V.pos.x - px) * -tz + (V.pos.z - pz) * tx, lim = this.deck.halfW - 0.45;
+    if (Math.abs(sl) <= lim) return;
+    const sg = Math.sign(sl), nx = -tz * sg, nz = tx * sg, over = Math.abs(sl) - lim;
+    V.pos.x -= nx * over; V.pos.z -= nz * over;
+    const vn = V.vx * nx + V.vz * nz; if (vn > 0) { V.vx -= nx * vn * 1.25; V.vz -= nz * vn * 1.25; if (vn > 4) V.impact = Math.max(V.impact || 0, Math.min(1, vn / 16)); }
+  },
+  // keep the chase camera inside the bore
+  clampCam(v, P) {
+    if (!this.inside) return false;
+    const S = this.deck.samples, i0 = Math.max(0, (P.deckI || 0) - 30), i1 = Math.min(S.length - 1, (P.deckI || 0) + 30);
+    let b = S[i0], bd = Infinity; for (let i = i0; i <= i1; i++) { const q = S[i], dd = (q.x - v.x) ** 2 + (q.z - v.z) ** 2 + ((q.y - v.y) * 0.5) ** 2; if (dd < bd) { bd = dd; b = q; } }
+    const C = LAVA_TUBE.size(), nx = -b.tz, nz = b.tx, along = (v.x - b.x) * b.tx + (v.z - b.z) * b.tz;
+    let lat = (v.x - b.x) * nx + (v.z - b.z) * nz; const lim = this.deck.halfW - 0.6;
+    if (Math.abs(lat) > lim) lat = Math.sign(lat) * lim;
+    v.x = b.x + b.tx * along + nx * lat; v.z = b.z + b.tz * along + nz * lat;
+    const lo = b.y + this.floorDy(b, lat) + 1.1, hi = b.y + C.top * Math.sqrt(Math.max(0, 1 - (lat / C.hw) ** 2)) - 1.6;
+    v.y = clamp(v.y, lo, Math.max(lo + 0.5, hi));
+    return true;
+  },
+};
+
+// ============================================================
+//  Volcano: Cinder Isle itself. The lava river (from a fissure below the rim down the south face to the sea,
+//  steaming where it meets the water, under Ember Road in short lava tunnels), the crater's lake of lava, the
+//  smoke plume (a landmark from the main island), eruptions every half minute or so (a boom, the ground shakes,
+//  glowing lava bombs rain down the flanks), embers in the air, steaming fumaroles, charred trees and obsidian,
+//  orange studs down the roads, the Basalt Stairs on the west shore, and the Ember Observatory on the summit
+//  terrace by the Lava Tube's gateway. Near the island the air turns smoky; touch the lava and it's 'Too hot!'.
+// ============================================================
+// camera-facing quads in one draw call (smoke, glows): per-instance position, size, alpha, colour and spin
+function billboardCloud(n, tex, { additive = false, fogMul = 1 } = {}) {
+  const base = new THREE.PlaneGeometry(1, 1), g = new THREE.InstancedBufferGeometry();
+  g.index = base.index; g.setAttribute('position', base.attributes.position); g.setAttribute('uv', base.attributes.uv);
+  const A = { pos: new Float32Array(n * 3), size: new Float32Array(n), alpha: new Float32Array(n), col: new Float32Array(n * 3).fill(1), rot: new Float32Array(n) };
+  g.setAttribute('iPos', new THREE.InstancedBufferAttribute(A.pos, 3)); g.setAttribute('iSize', new THREE.InstancedBufferAttribute(A.size, 1));
+  g.setAttribute('iAlpha', new THREE.InstancedBufferAttribute(A.alpha, 1)); g.setAttribute('iCol', new THREE.InstancedBufferAttribute(A.col, 3)); g.setAttribute('iRot', new THREE.InstancedBufferAttribute(A.rot, 1));
+  g.instanceCount = n;
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: true, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, fogMul: { value: fogMul } }]),
+    vertexShader: `attribute vec3 iPos; attribute float iSize; attribute float iAlpha; attribute vec3 iCol; attribute float iRot;
+      varying vec2 vUv; varying float vA; varying vec3 vC; varying float vDepth;
+      void main() { vUv = uv; vA = iAlpha; vC = iCol; vec4 mv = modelViewMatrix * vec4(iPos, 1.0); float c = cos(iRot), s = sin(iRot);
+        mv.xy += vec2(position.x * c - position.y * s, position.x * s + position.y * c) * iSize; vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; uniform vec3 fogColor; uniform float fogNear; uniform float fogFar; uniform float fogMul;
+      varying vec2 vUv; varying float vA; varying vec3 vC; varying float vDepth;
+      void main() { vec4 t = texture2D(map, vUv); float a = t.a * vA; if (a < 0.003) discard; float f = smoothstep(fogNear * fogMul, fogFar * fogMul, vDepth);
+        ${additive ? 'gl_FragColor = vec4(t.rgb * vC, a * (1.0 - f));' : 'gl_FragColor = vec4(mix(t.rgb * vC, fogColor, f), a);'}
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  mat.uniforms.map.value = tex;
+  const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; mesh.userData.dynamic = true; mesh.userData.A = A;
+  mesh.flush = () => { for (const k of ['iPos', 'iSize', 'iAlpha', 'iCol', 'iRot']) g.attributes[k].needsUpdate = true; };
+  return mesh;
+}
+const softTex = (rgba0, rgba1, noise = 0) => canvasTex(64, 64, (c, w, h) => {
+  const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, rgba0); g.addColorStop(1, rgba1); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  if (noise) { const im = c.getImageData(0, 0, w, h), d = im.data; for (let i = 0; i < d.length; i += 4) d[i + 3] *= 1 - noise + noise * Math.random(); c.putImageData(im, 0, 0); }
+});
+const Volcano = {
+  k: 0, t: 0, nextErupt: 26, quake: 0, hot: 0, visited: false, bombs: [], night: 0, since: 99,
+  at(a, r) { return [EMBER.x + Math.cos(a) * r, EMBER.z + Math.sin(a) * r]; },
+  build(scene) {
+    const g = this.g = new THREE.Group(); g.name = 'volcano'; scene.add(g);
+    const rng = makeRng(9313);
+    this.free = (x, z, pad = 7) => { const nr = World.roadIndex.nearest(x, z, 40); if (nr && nr.d < World.roads[nr.ri].halfW + pad) return false; return deckLowest(x, z, pad) > 1e8 || deckLowest(x, z, pad) < groundHeight(x, z) - 30; };
+    this.onIsle = (x, z) => isleParams(x, z).cinder > 0.8;
+    this.riverTex = lavaTexture(256, 26, 3); this.lakeTex = lavaTexture(512, 70, 8, 1.7); this.lakeTex.repeat.set(3, 3);
+    this.glowList = [];
+    // small things only show within ~half a kilometre (from Bayview you see the mountain, the lava and the plume)
+    const gn = this.gn = new THREE.Group(); gn.name = 'volcanoNear';
+    this.buildRiver(g, gn);
+    this.buildLake(g, rng);
+    this.buildVents(g, gn, rng);
+    this.buildScatter(gn, rng);
+    this.buildStuds(gn);
+    this.buildStairs(gn, rng);
+    this.buildSummit(gn, rng);
+    this.buildSigns(gn);
+    bakeStatic([...gn.children], gn); gn.userData.dynamic = true; g.add(gn);
+    bakeStatic([...g.children], g);
+    this.buildGlows(g);
+    this.buildPlume(scene);
+    this.buildEmbers(scene, rng);
+    this.buildBombs(g);
+    this.ready = true;
+  },
+  // ---------- the lava river ----------
+  buildRiver(g, gn) {
+    const L = lavaLine(), curve = new THREE.CatmullRomCurve3(L.map(p => new THREE.Vector3(p.x, 0, p.z))), len = curve.getLength(), N = Math.ceil(len / 2.5);
+    const st = []; let s = 0, prev = null;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, c = curve.getPointAt(u), t = curve.getTangentAt(u), gc = groundHeight(c.x, c.z);
+      if (prev) s += Math.hypot(c.x - prev.x, c.z - prev.z); prev = c;
+      const r = Math.hypot(c.x - EMBER.x, c.z - EMBER.z), nr = World.roadIndex.nearest(c.x, c.z, 30);
+      const under = !!nr && nr.d < World.roads[nr.ri].halfW + 4.5;
+      st.push({ x: c.x, z: c.z, y: gc, s, nx: -t.z, nz: t.x, tx: t.x, tz: t.z, w: lerp(2.4, 6.2, smooth(62, 130, r)), under, r });
+      if (gc < -0.5) break; // into the sea
+    }
+    this.stations = st;
+    this.entry = st.find(p => p.y < 0.3) || st[st.length - 1];
+    const NL = 7, pos = [], uv = [], col = [], idx = [];
+    st.forEach((p, i) => {
+      const hot = 1 - 0.35 * smooth(80, 230, p.r);
+      for (let j = 0; j < NL; j++) {
+        const l = j / (NL - 1) * 2 - 1, px = p.x + p.nx * l * p.w, pz = p.z + p.nz * l * p.w;
+        pos.push(px, groundHeight(px, pz) + 0.45 + (1 - l * l) * 0.25, pz); uv.push(j / (NL - 1), p.s / 9);
+        const e = (1 - Math.abs(l) * 0.45) * hot; col.push(e, e * (0.92 + 0.08 * hot), e * 0.9);
+      }
+      if (i && !p.under && !st[i - 1].under) { const a = (i - 1) * NL; for (let j = 0; j < NL - 1; j++) idx.push(a + j, a + NL + j, a + j + 1, a + j + 1, a + NL + j, a + NL + j + 1); }
+    });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setIndex(idx);
+    let up = 0; geo.computeVertexNormals(); const nn = geo.attributes.normal; for (let i = 0; i < nn.count; i += 5) up += nn.getY(i);
+    if (up < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } geo.setIndex(idx); }
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.riverTex, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); m.userData.dynamic = true; g.add(m);
+    // where the river runs under a road: a crust of rock over it, glowing at the mouth
+    const crust = new THREE.MeshLambertMaterial({ color: 0x1d1716, flatShading: true }), slit = new THREE.MeshBasicMaterial({ color: 0xff7a22 });
+    for (let i = 1; i < st.length; i++) {
+      const a = st[i - 1], b = st[i]; if (a.under === b.under) continue;
+      const p = a.under ? b : a, dir = a.under ? -1 : 1; // dir: which way the road is from this end
+      const hump = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 6, 0, TAU, 0, Math.PI / 2), crust); hump.scale.set(p.w * 1.05, 1.9, 4.5);
+      hump.position.set(p.x + p.tx * dir * 2, groundHeight(p.x, p.z) - 0.2, p.z + p.tz * dir * 2); hump.rotation.y = Math.atan2(p.tx, p.tz); gn.add(hump);
+      const sl = new THREE.Mesh(new THREE.BoxGeometry(p.w * 1.4, 0.45, 0.3), slit); sl.position.set(p.x - p.tx * dir * 2.4, groundHeight(p.x, p.z) + 0.55, p.z - p.tz * dir * 2.4); sl.rotation.y = Math.atan2(p.tx, p.tz); gn.add(sl);
+      this.glowList.push({ x: p.x, y: groundHeight(p.x, p.z) + 1.5, z: p.z, s: p.w * 2.4, a: 0.35 });
+    }
+    for (let i = 0; i < st.length; i += 4) if (!st[i].under) this.glowList.push({ x: st[i].x, y: st[i].y + 1.6, z: st[i].z, s: st[i].w * 3.2, a: 0.28, fl: i });
+    // lava out of the Lava Tube's mouth joins the river (you come out of the mountain on a lava flow)
+    const D = Decks.list.find(d => d.id === 'lavatube');
+    if (D) {
+      const M = caveDeckMouths(D), q = D.samples.find(p => p.s >= M.sW + 4) || D.samples[D.samples.length - 1];
+      let best = st[0]; for (const p of st) if ((p.x - q.x) ** 2 + (p.z - q.z) ** 2 < (best.x - q.x) ** 2 + (best.z - q.z) ** 2) best = p;
+      const side = ((best.x - q.x) * -q.tz + (best.z - q.z) * q.tx) > 0 ? 1 : -1, hw = D.halfW + 1.6;
+      const sx = q.x - q.tz * side * hw, sz = q.z + q.tx * side * hw, pts = [];
+      for (let k = 0; k <= 10; k++) { const u = k / 10, x = lerp(sx, best.x, u) + Math.sin(u * 3) * 2, z = lerp(sz, best.z, u); pts.push(new THREE.Vector3(x, 0, z)); }
+      const c2 = new THREE.CatmullRomCurve3(pts), P2 = c2.getSpacedPoints(16), p2 = [], u2 = [], i2 = [];
+      P2.forEach((c, i) => { const t = c2.getTangentAt(i / 16), w = 1.6 + i / 16 * 1.8; for (const l of [-1, 0, 1]) { const x = c.x - t.z * l * w, z = c.z + t.x * l * w; p2.push(x, groundHeight(x, z) + 0.4, z); u2.push((l + 1) / 2, i * 0.4); } if (i) { const a = (i - 1) * 3; i2.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); } });
+      const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(p2, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(u2, 2)); sg.setIndex(i2); sg.computeVertexNormals();
+      const ns = sg.attributes.normal; if (ns.getY(0) < 0) { for (let i = 0; i < i2.length; i += 3) { const t = i2[i + 1]; i2[i + 1] = i2[i + 2]; i2[i + 2] = t; } sg.setIndex(i2); }
+      const sm = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ map: this.riverTex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); sm.userData.dynamic = true; g.add(sm);
+      this.glowList.push({ x: q.x, y: q.y + 4, z: q.z, s: 26, a: 0.3 });
+      this.spill = P2.map(c => ({ x: c.x, z: c.z, y: groundHeight(c.x, c.z) }));
+    }
+  },
+  // ---------- the crater: a lake of lava with a skin of crust, bubbling ----------
+  buildLake(g, rng) {
+    const lake = new THREE.Mesh(new THREE.CircleGeometry(EMBER.lake + 8, 48), this.lakeMat = new THREE.MeshBasicMaterial({ map: this.lakeTex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    lake.rotation.x = -Math.PI / 2; lake.position.set(EMBER.x, EMBER.lakeY, EMBER.z); lake.userData.dynamic = true; g.add(lake);
+    const bg = new THREE.IcosahedronGeometry(1, 1);
+    this.bubbles = new THREE.InstancedMesh(bg, new THREE.MeshBasicMaterial({ color: 0xffc35a }), 10); this.bubbles.frustumCulled = false;
+    this.bub = Array.from({ length: 10 }, () => ({ t: rng() * 3, x: 0, z: 0, s: 1 })); g.add(this.bubbles);
+    this.glowList.push({ x: EMBER.x, y: EMBER.lakeY + 12, z: EMBER.z, s: 110, a: 0.32, crater: true }, { x: EMBER.x, y: EMBER.lakeY + 30, z: EMBER.z, s: 150, a: 0.16, crater: true });
+  },
+  // ---------- the fissure the river pours from, steaming fumaroles, and steam where the lava meets the sea ----------
+  buildVents(g, gn, rng) {
+    const crust = new THREE.MeshLambertMaterial({ color: 0x241b19, flatShading: true }), hotM = new THREE.MeshBasicMaterial({ color: 0xffa040 });
+    const s0 = this.stations[0], cone = new THREE.Mesh(new THREE.ConeGeometry(6, 5, 10, 1, true), crust); cone.position.set(s0.x, groundHeight(s0.x, s0.z) + 1.2, s0.z); g.add(cone);
+    const mouth = new THREE.Mesh(new THREE.CircleGeometry(2.6, 12), hotM); mouth.rotation.x = -Math.PI / 2; mouth.position.set(s0.x, groundHeight(s0.x, s0.z) + 3.4, s0.z); g.add(mouth);
+    this.glowList.push({ x: s0.x, y: groundHeight(s0.x, s0.z) + 6, z: s0.z, s: 24, a: 0.4 });
+    this.vent = { x: s0.x, y: groundHeight(s0.x, s0.z) + 3.6, z: s0.z };
+    // fumaroles: sulphur-crusted cracks that steam
+    const sulf = new THREE.MeshLambertMaterial({ color: 0xc9b13e, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    this.fums = [];
+    for (let k = 0; k < 600 && this.fums.length < 7; k++) {
+      const a = rng() * TAU, r = 80 + rng() * 100, [x, z] = this.at(a, r);
+      if (!this.free(x, z, 9) || lavaDist(x, z) < 22 || !this.onIsle(x, z)) continue;
+      const y = groundHeight(x, z), d = new THREE.Mesh(new THREE.CircleGeometry(2.2 + rng() * 1.5, 9), sulf); d.rotation.x = -Math.PI / 2; d.position.set(x, y + 0.08, z); gn.add(d);
+      const m = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1.1, 7), crust); m.position.set(x, y + 0.35, z); gn.add(m);
+      this.fums.push({ x, y: y + 0.9, z, t: rng() });
+    }
+  },
+  // ---------- charred trees, obsidian and basalt boulders ----------
+  buildScatter(g, rng) {
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    const place = (n, tries, test) => { const out = []; for (let k = 0; k < tries && out.length < n; k++) { const a = rng() * TAU, r = 30 + Math.sqrt(rng()) * 290, [x, z] = this.at(a, r); const y = groundHeight(x, z); if (test(x, y, z, r)) out.push([x, y, z]); } return out; };
+    const ok = (x, y, z, r, pad) => y > 1.5 && this.onIsle(x, z) && r > 68 && this.free(x, z, pad) && lavaDist(x, z) > 16 && !inCaveHole(x, z) && Math.hypot(x - this.stairs.x, z - this.stairs.z) > 40;
+    this.stairs = this.stairsSite();
+    // dead trees: a burnt trunk and three bare branches
+    { const parts = [], tr = new THREE.CylinderGeometry(0.12, 0.3, 5, 5); tr.translate(0, 2.5, 0); parts.push(colorizeGeo(tr, 0x1e1917));
+      [[2.6, 0.8, 0.0], [3.4, -0.9, 2.1], [4.1, 0.7, 4.2]].forEach(([h, tilt, yaw]) => { const b = new THREE.CylinderGeometry(0.04, 0.1, 2.2, 4); b.translate(0, 1.1, 0); b.rotateZ(tilt); b.rotateY(yaw); b.translate(0, h, 0); parts.push(colorizeGeo(b, 0x231c1a)); });
+      const geo = mergeGeos(parts), list = place(110, 3000, (x, y, z, r) => y < 40 && ok(x, y, z, r, 7));
+      const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), list.length); im.castShadow = true;
+      list.forEach(([x, y, z], k) => { e.set((rng() - 0.5) * 0.2, rng() * TAU, (rng() - 0.5) * 0.2); q.setFromEuler(e); const s = 0.7 + rng() * 0.7; sc.set(s, s, s); v.set(x, y - 0.2, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+      im.computeBoundingSphere(); g.add(im); }
+    // obsidian: glossy black glass
+    { const list = place(80, 2000, (x, y, z, r) => ok(x, y, z, r, 5));
+      const im = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x120f16, roughness: 0.18, metalness: 0.2, flatShading: true, envMapIntensity: 1.5 }), list.length); im.castShadow = true;
+      list.forEach(([x, y, z], k) => { e.set(rng() * 3, rng() * 3, rng() * 3); q.setFromEuler(e); const s = 0.5 + rng() * 1.6; sc.set(s, s * (0.6 + rng() * 0.6), s * (0.7 + rng() * 0.5)); v.set(x, y + s * 0.2, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+      im.computeBoundingSphere(); g.add(im); }
+    // big basalt boulders
+    { const list = place(70, 2000, (x, y, z, r) => ok(x, y, z, r, 7));
+      const im = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x3a3534, flatShading: true }), list.length); im.castShadow = true;
+      list.forEach(([x, y, z], k) => { e.set(rng(), rng() * 3, rng()); q.setFromEuler(e); const s = 1.4 + rng() * 2.8; sc.set(s, s * 0.7, s); v.set(x, y, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); World.colliders.add({ type: 'circle', x, z, r: s * 0.85, h: s * 0.9 }); });
+      im.computeBoundingSphere(); g.add(im); }
+  },
+  // ---------- glowing orange studs down both edges of Ember Road and the Lava Flow Road ----------
+  buildStuds(g) {
+    const list = [];
+    for (const R of World.roads) { if (!R.glow) continue; for (const p of R.samples) { if (Math.round(p.s / 2.5) % 4) continue; for (const sg of [-1, 1]) list.push([p.x - p.tz * sg * (R.halfW + 0.25), p.y + 0.05, p.z + p.tx * sg * (R.halfW + 0.25), Math.atan2(p.tx, p.tz)]); } }
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.1, 0.22), new THREE.MeshBasicMaterial({ color: 0xff7a22 }), list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1);
+    list.forEach(([x, y, z, yaw], k) => { q.setFromAxisAngle(up, yaw); v.set(x, y, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+    im.computeBoundingSphere(); g.add(im);
+  },
+  // ---------- the Basalt Stairs: hexagonal columns stepping down into the sea on the west shore ----------
+  stairsSite() {
+    if (this._st) return this._st;
+    const a = 3.0; let rc = 300; for (let r = 190; r < 330; r += 2) { const [x, z] = this.at(a, r); if (groundHeight(x, z) < 3) { rc = r; break; } }
+    const [x, z] = this.at(a, rc - 4); return (this._st = { x, z, a });
+  },
+  buildStairs(g, rng) {
+    const S = this.stairsSite(), R = 1.05, cols = [];
+    const ux = Math.cos(S.a), uz = Math.sin(S.a); // seaward
+    for (let j = -22; j <= 22; j++) for (let i = -26; i <= 26; i++) {
+      const lx = (i + (j & 1) * 0.5) * R * 1.732, lz = j * R * 1.5, x = S.x + lx, z = S.z + lz;
+      const dd = Math.hypot(lx, lz) + 7 * Noise.simplex(x / 14, z / 14); if (dd > 30) continue;
+      const gy = groundHeight(x, z); if (gy > 16 || gy < -5 || !this.free(x, z, 6)) continue;
+      const along = (x - S.x) * ux + (z - S.z) * uz; // + = out to sea
+      const step = Math.round((Math.max(gy, -1.2) + 0.9) / 0.8) * 0.8, tall = smooth(6, -14, along) * (2.5 + 5 * Math.abs(Noise.simplex(x / 5, z / 5)));
+      const top = Math.max(step + 0.35 + 0.5 * rng(), 0.4 + 0.7 * rng()) + tall, bot = Math.min(gy, 0) - 2.5;
+      cols.push([x, bot, z, top - bot, top, gy]);
+    }
+    const geo = new THREE.CylinderGeometry(R * 0.96, R * 0.96, 1, 6).toNonIndexed(); geo.translate(0, 0.5, 0);
+    const nr = geo.attributes.normal, col = new Float32Array(nr.count * 3); for (let i = 0; i < nr.count; i++) { const tp = nr.getY(i) > 0.9; col[i * 3] = tp ? 0.42 : 0.2; col[i * 3 + 1] = tp ? 0.4 : 0.19; col[i * 3 + 2] = tp ? 0.4 : 0.2; }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), cols.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    cols.forEach(([x, b, z, h, top, gy], k) => { sc.set(1, h, 1); v.set(x, b, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); if (top - gy > 0.6 && gy > -1.2) World.colliders.add({ type: 'circle', x, z, r: R * 0.95, h: top - gy }); });
+    im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true; g.add(im);
+  },
+  // ---------- the summit terrace: a stone parapet over the crater, the Ember Observatory, a telescope ----------
+  buildSummit(g, rng) {
+    const stone = new THREE.MeshLambertMaterial({ color: 0x4a4341, flatShading: true }), cap = new THREE.MeshLambertMaterial({ color: 0x6d6461, flatShading: true });
+    // parapet along the crater edge, wherever the terrace is low enough to drive off into the crater
+    const rP = 39.5;
+    for (let a = EMBER_LOOK.a - 0.62; a < EMBER_LOOK.a + 0.5; a += 0.055) {
+      const [x0, z0] = this.at(a, rP), [x1, z1] = this.at(a + 0.055, rP), [xm, zm] = this.at(a + 0.0275, rP + 1.5);
+      const gy = groundHeight(xm, zm); if (gy > EMBER_LOOK.y + 2.5 || !this.free(xm, zm, 1)) continue;
+      const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz), rot = Math.atan2(-dz, dx), y = Math.min(groundHeight(x0, z0), groundHeight(x1, z1));
+      const w = new THREE.Mesh(new THREE.BoxGeometry(len + 0.1, 1.3, 0.7), stone); w.position.set((x0 + x1) / 2, y + 0.45, (z0 + z1) / 2); w.rotation.y = rot; w.castShadow = true; g.add(w);
+      const c = new THREE.Mesh(new THREE.BoxGeometry(len + 0.2, 0.18, 0.9), cap); c.position.set((x0 + x1) / 2, y + 1.18, (z0 + z1) / 2); c.rotation.y = rot; g.add(c);
+      World.colliders.add({ type: 'box', x: (x0 + x1) / 2, z: (z0 + z1) / 2, hx: len / 2 + 0.05, hz: 0.4, rot, h: 1.6 });
+    }
+    // the observatory: a concrete drum, a white dome with a slit, glowing windows, an aerial with a red light
+    const [ox, oz] = this.at(EMBER_LOOK.a - 0.19, 46), oy = groundHeight(ox, oz), O = new THREE.Group(); O.position.set(ox, oy - 0.2, oz);
+    const R0 = World.roads.find(r => r.id === 'ember'), end = R0.samples[R0.samples.length - 1]; O.rotation.y = Math.atan2(end.x - ox, end.z - oz);
+    const conc = new THREE.MeshLambertMaterial({ color: 0xd2ccc2, flatShading: true }), dark = new THREE.MeshLambertMaterial({ color: 0x2a2a2e });
+    const glowW = new THREE.MeshLambertMaterial({ color: 0x3a2a1a, emissive: 0xffb35c, emissiveIntensity: 0.9 }); (World.glowMats = World.glowMats || []).push(glowW);
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.6, 4.4, 20), conc); drum.position.y = 2.2; drum.castShadow = true; O.add(drum);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(4.55, 4.55, 0.35, 20), dark); band.position.y = 4.45; O.add(band);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(4.35, 20, 10, 0, TAU, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xeceae6, roughness: 0.35, metalness: 0.45, flatShading: true })); dome.position.y = 4.6; dome.castShadow = true; O.add(dome);
+    const slitM = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.25, 4.6), dark); slitM.position.set(0, 4.6 + 4.1, 0.2); slitM.rotation.x = -0.12; O.add(slitM);
+    const slit2 = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.2, 0.25), dark); slit2.position.set(0, 4.6 + 2.3, 3.6); slit2.rotation.x = -0.62; O.add(slit2);
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU + 0.6, w = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 0.2), glowW); w.position.set(Math.sin(a) * 4.45, 2.7, Math.cos(a) * 4.45); w.rotation.y = a; O.add(w); }
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.3, 0.2), dark); door.position.set(0, 1.15, 4.55); O.add(door);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 7, 6), dark); mast.position.set(3.2, 7.5, -1.8); O.add(mast);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 6, 0, TAU, 0, 0.9), conc); dish.position.set(-3.3, 5.8, -1.2); dish.rotation.set(-0.9, 0.5, 0); O.add(dish);
+    const sign = canvasTex(512, 96, (c, w, h) => { c.fillStyle = '#2a2220'; c.fillRect(0, 0, w, h); c.font = '900 50px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffd7a8'; c.fillText('EMBER OBSERVATORY', w / 2, h / 2 + 2); });
+    const board = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.1, 0.15), [dark, dark, dark, dark, new THREE.MeshLambertMaterial({ map: sign }), dark]); board.position.set(0, 3.55, 4.68); O.add(board);
+    O.updateMatrixWorld(true);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), this.beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a })); beacon.position.copy(new THREE.Vector3(3.2, 11.1, -1.8).applyMatrix4(O.matrixWorld)); beacon.userData.dynamic = true; g.add(beacon);
+    g.add(O); World.colliders.add({ type: 'circle', x: ox, z: oz, r: 4.8, h: 10 });
+    // a coin telescope on the parapet, pointed into the crater
+    const [tx, tz] = this.at(EMBER_LOOK.a + 0.12, rP + 2.2), ty = groundHeight(tx, tz), T = new THREE.Group(); T.position.set(tx, ty, tz); T.rotation.y = Math.atan2(EMBER.x - tx, EMBER.z - tz);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.2, 6), dark); post.position.y = 0.6; T.add(post);
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.9, 8), new THREE.MeshLambertMaterial({ color: 0xe0186e })); tube.rotation.x = Math.PI / 2 - 0.35; tube.position.set(0, 1.35, 0.1); T.add(tube);
+    g.add(T);
+  },
+  // ---------- signposts home ----------
+  signPost(g, x, z, yaw, lines, arrow) {
+    const tex = canvasTex(512, 192, (c, w, h) => {
+      c.fillStyle = '#1f6b3a'; c.fillRect(0, 0, w, h); c.strokeStyle = '#f4f1e8'; c.lineWidth = 7; c.strokeRect(8, 8, w - 16, h - 16);
+      c.fillStyle = '#f4f1e8'; c.textBaseline = 'middle'; c.textAlign = 'left'; lines.forEach((t, i) => { c.font = `700 ${i ? 34 : 46}px Arial, sans-serif`; c.fillText(t, 34, h * (i + 0.5) / lines.length + 4); });
+      c.font = '900 92px Arial'; c.textAlign = 'right'; c.fillText(arrow, w - 24, h / 2 + 6);
+    });
+    const gy = groundHeight(x, z), S = new THREE.Group(); S.position.set(x, gy, z); S.rotation.y = yaw;
+    const pm = new THREE.MeshLambertMaterial({ color: 0x8c9196 });
+    for (const sx of [-1.5, 1.5]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.6, 6), pm); p.position.set(sx, 1.8, -0.06); S.add(p); }
+    const b = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.6, 0.08), [pm, pm, pm, pm, new THREE.MeshLambertMaterial({ map: tex }), pm]); b.position.y = 2.9; S.add(b);
+    g.add(S);
+  },
+  buildSigns(g) {
+    // out of the Lava Tube: the way home is along the Lava Flow Road
+    const F = World.roads.find(r => r.id === 'lavaflow');
+    if (F) {
+      const p = F.samples[Math.min(F.samples.length - 1, 14)], side = 1, off = F.halfW + 3;
+      this.signPost(g, p.x - p.tz * side * off, p.z + p.tx * side * off, Math.atan2(-p.tx, -p.tz), ['MAINLAND', 'via Cinder Causeway'], '↑');
+      // and where it meets Ember Road: turn down the hill for the causeway
+      const q = F.samples[Math.max(0, F.samples.length - 12)];
+      this.signPost(g, q.x + q.tz * off, q.z - q.tx * off, Math.atan2(-q.tx, -q.tz), ['MAINLAND', 'Cinder Causeway'], '↖');
+    }
+  },
+  // ---------- glows: soft additive light over the lava ----------
+  buildGlows(g) {
+    const tex = softTex('rgba(255,160,70,0.85)', 'rgba(255,70,10,0)');
+    this.glows = billboardCloud(this.glowList.length, tex, { additive: true, fogMul: 1.2 });
+    const A = this.glows.userData.A;
+    this.glowList.forEach((q, i) => { A.pos.set([q.x, q.y, q.z], i * 3); A.size[i] = q.s; A.alpha[i] = q.a; A.col.set([1, 0.62, 0.3], i * 3); A.rot[i] = i * 1.3; });
+    this.glows.flush(); g.add(this.glows);
+  },
+  // ---------- the plume: a column of smoke over the crater (a landmark from afar), and eruption bursts ----------
+  buildPlume(scene) {
+    const tex = canvasTex(128, 128, (c, w, h) => {
+      for (let k = 0; k < 9; k++) { const x = w / 2 + (Math.random() - 0.5) * w * 0.35, y = h / 2 + (Math.random() - 0.5) * h * 0.35, r = w * (0.22 + Math.random() * 0.18); const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,0.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); }
+    });
+    this.PN = 54; this.BN = 22;
+    this.plume = billboardCloud(this.PN + this.BN, tex, { fogMul: 1.9 });
+    this.plume.position.set(EMBER.x, 0, EMBER.z); scene.add(this.plume);
+    this.burst = Array.from({ length: this.BN }, () => ({ t: 9 }));
+    this.wind = { x: 0.8, z: -0.35 };
+  },
+  // ---------- embers rising round the camera near the lava ----------
+  buildEmbers(scene, rng) {
+    const N = this.emberN = 520, pos = new Float32Array(N * 3); this.emberOff = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) { this.emberOff[i * 3] = rng() * 100; this.emberOff[i * 3 + 1] = rng() * 50; this.emberOff[i * 3 + 2] = rng() * 100; }
+    const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const dot = softTex('rgba(255,220,150,1)', 'rgba(255,90,20,0)');
+    this.embers = new THREE.Points(gg, new THREE.PointsMaterial({ map: dot, size: 0.34, color: 0xffa050, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    this.embers.frustumCulled = false; this.embers.visible = false; scene.add(this.embers);
+  },
+  // ---------- lava bombs ----------
+  buildBombs(g) {
+    const n = 16, im = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }), n);
+    im.frustumCulled = false; im.userData.dynamic = true; const m4 = new THREE.Matrix4().makeScale(0, 0, 0), c = new THREE.Color(0xffa040);
+    for (let k = 0; k < n; k++) { im.setMatrixAt(k, m4); im.setColorAt(k, c); this.bombs.push({ on: false }); }
+    this.bombMesh = im; g.add(im);
+  },
+  erupt(game) {
+    const P = game.player, d = Math.hypot(P.pos.x - EMBER.x, P.pos.z - EMBER.z), near = clamp(1 - (d - 60) / 900, 0, 1);
+    this.quake = Math.max(this.quake, 0.25 + 0.75 * near * near);
+    Sound.eruption && Sound.eruption(near);
+    if (near > 0.3) Rumble.pulse(0.5 * near, 0.9 * near, 900);
+    this.burst.forEach((b, i) => { b.t = -Math.random() * 1.6; b.a = Math.random() * TAU; b.sp = 0.7 + Math.random() * 0.6; b.k = i; });
+    if (this.g.visible) for (const b of this.bombs) {
+      const a = Math.random() * TAU, sp = 8 + Math.random() * 24;
+      Object.assign(b, { on: true, x: EMBER.x + Math.cos(a) * 5, y: EMBER.lakeY + 4, z: EMBER.z + Math.sin(a) * 5, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, vy: 32 + Math.random() * 24, t: 0, s: 0.6 + Math.random() * 1.1, trail: 0, delay: Math.random() * 0.8 });
+    }
+    if (!this.toldEruption && near > 0.5) { this.toldEruption = true; UI.flash('Mount Ember is erupting!', 1.8); }
+  },
+  // ============================================================
+  //  per frame
+  // ============================================================
+  update(dt, game) {
+    if (!this.ready) return;
+    this.t += dt; const t = this.t;
+    const cam = game.camera.position, env = game.env, L = env.L, fog = env.scene.fog, P = game.player;
+    const dC = Math.hypot(cam.x - EMBER.x, cam.z - EMBER.z), dI = Math.hypot(cam.x - CINDER.x, cam.z - CINDER.z);
+    this.night = clamp(L ? (L.windows || 0) : 0, 0, 1);
+    const night = this.night, under = LavaTube.k > 0.5 || Cave.k > 0.5;
+    this.g.visible = !under && dI - CINDER.r < fog.far * 0.9 + 60;
+    this.gn.visible = dI < CINDER.r + 300;
+    const target = cam.y < 300 && !under ? smooth(CINDER.r + 200, CINDER.r - 40, dI) : 0;
+    this.k += (target - this.k) * Math.min(1, dt * 1.5); if (this.k < 0.002) this.k = 0;
+    const k = this.k;
+    // flowing lava
+    this.riverTex.offset.y = -t * 0.2;
+    this.lakeTex.offset.set(Math.sin(t * 0.03) * 0.25, t * 0.006);
+    if (this.g.visible) {
+      this.lakeMat.color.setScalar(0.9 + 0.1 * Math.sin(t * 1.7));
+      // glows: brighter at night, flickering
+      const A = this.glows.userData.A;
+      this.glowList.forEach((q, i) => { A.alpha[i] = q.a * (0.55 + 0.9 * night) * (0.85 + 0.15 * Math.sin(t * 2.3 + i * 1.7)) * (q.crater ? 1 + 0.6 * Math.max(0, 1 - this.since * 0.25) : 1); });
+      this.glows.geometry.attributes.iAlpha.needsUpdate = true;
+      // lake bubbles: swell and pop
+      const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+      this.bub.forEach((b, i) => {
+        b.t -= dt; if (b.t < 0) { b.t = 1.2 + Math.random() * 2.5; const a = Math.random() * TAU, r = Math.random() * (EMBER.lake - 4); b.x = EMBER.x + Math.cos(a) * r; b.z = EMBER.z + Math.sin(a) * r; b.s = 0.8 + Math.random() * 1.8; b.life = b.t; }
+        const u = 1 - b.t / b.life, s = u < 0.8 ? b.s * smooth(0, 0.8, u) : b.s * (1 - smooth(0.8, 1, u)) * 1.3;
+        sc.set(s, s * 0.6, s); v.set(b.x, EMBER.lakeY + s * 0.15, b.z); m4.compose(v, q, sc); this.bubbles.setMatrixAt(i, m4);
+      });
+      this.bubbles.instanceMatrix.needsUpdate = true;
+      this.beaconMat.color.setScalar(Math.sin(t * 3) > 0.6 ? 1 : 0.15); this.beaconMat.color.r = Math.sin(t * 3) > 0.6 ? 1 : 0.3;
+      // steam: fumaroles and the ocean entry (only near, they share the game's particle pool)
+      if (dC < 380) {
+        for (const f of this.fums) { f.t -= dt; if (f.t < 0) { f.t = 0.22 + Math.random() * 0.2; game.particles.emit(f.x + (Math.random() - 0.5), f.y, f.z + (Math.random() - 0.5), (Math.random() - 0.5) * 0.6 + this.wind.x * 0.5, 2 + Math.random(), (Math.random() - 0.5) * 0.6 + this.wind.z * 0.5, 0xf2eee8, 2.2, 3.2, 2.6); } }
+        if (this.entry && (this.entryT = (this.entryT || 0) - dt) < 0) { this.entryT = 0.07; const e = this.entry; game.particles.emit(e.x + (Math.random() - 0.5) * e.w * 2, 0.6, e.z + (Math.random() - 0.5) * e.w * 2, this.wind.x, 3 + Math.random() * 3, this.wind.z, 0xf6f6f2, 4, 4.2, 4); }
+        if (this.vent && Math.random() < dt * 6) game.particles.emit(this.vent.x, this.vent.y, this.vent.z, (Math.random() - 0.5) * 3, 5 + Math.random() * 5, (Math.random() - 0.5) * 3, 0xffa040, 0.6, 1.2, 0.6);
+      }
+      this.updateBombs(dt, game);
+    }
+    // the plume
+    this.since += dt;
+    this.plume.visible = dC < fog.far * 2.3 && !under;
+    if (this.plume.visible) {
+      const A = this.plume.userData.A, cB = this._pc || (this._pc = [new THREE.Color(0x2c2523), new THREE.Color(0x8f8783), new THREE.Color(0xff6a20)]), c = new THREE.Color();
+      for (let i = 0; i < this.PN; i++) {
+        const u = (i / this.PN + t / 46) % 1, h = u * 250, drift = Math.pow(u, 1.3) * 140, j = Math.sin(i * 12.9898) * 43758.5453 % 1;
+        A.pos.set([this.wind.x * drift + Math.sin(i * 2.3 + t * 0.1) * (4 + u * 26), EMBER.lakeY + 10 + h, this.wind.z * drift + Math.cos(i * 1.7 + t * 0.08) * (4 + u * 26)], i * 3);
+        A.size[i] = 22 + u * 90 + Math.abs(j) * 14; A.alpha[i] = smooth(0, 0.07, u) * (1 - smooth(0.55, 1, u)) * 0.6;
+        c.copy(cB[0]).lerp(cB[1], Math.pow(u, 0.7)).lerp(cB[2], Math.pow(1 - u, 4) * (0.25 + 0.6 * night)); A.col.set([c.r, c.g, c.b], i * 3); A.rot[i] = i * 1.7 + t * 0.03 * (i % 2 ? 1 : -1);
+      }
+      this.burst.forEach((b, n) => {
+        const i = this.PN + n; b.t += dt;
+        if (b.t < 0 || b.t > 14) { A.alpha[i] = 0; return; }
+        const u = b.t / 14, rise = (1 - Math.pow(1 - u, 2.2)) * 230 * b.sp;
+        A.pos.set([Math.cos(b.a) * (6 + u * 40) + this.wind.x * u * 60, EMBER.lakeY + 6 + rise, Math.sin(b.a) * (6 + u * 40) + this.wind.z * u * 60], i * 3);
+        A.size[i] = 16 + u * 110; A.alpha[i] = smooth(0, 0.04, u) * (1 - smooth(0.5, 1, u)) * 0.85;
+        c.set(0x1a1514).lerp(cB[2], Math.pow(1 - u, 6) * 0.9); A.col.set([c.r, c.g, c.b], i * 3); A.rot[i] = n * 2.1 + u;
+      });
+      this.plume.flush();
+    }
+    // embers in the air near the lava
+    const lavaK = Math.max(smooth(150, 40, dC), smooth(70, 8, lavaDist(cam.x, cam.z)) * (cam.y < 120 ? 1 : 0));
+    this.embers.visible = k > 0.02 && !under;
+    if (this.embers.visible) {
+      const a = this.embers.geometry.attributes.position, o = this.emberOff, cx = cam.x - 50, cy = cam.y - 12, cz = cam.z - 50;
+      for (let i = 0; i < this.emberN; i++) { const sw = Math.sin(t * 1.7 + i) * 0.8; a.setXYZ(i, cx + ((o[i * 3] - cam.x + t * this.wind.x * 2 + sw) % 100 + 100) % 100, cy + ((o[i * 3 + 1] + t * (2 + (i % 5) * 0.4) - cam.y) % 50 + 50) % 50, cz + ((o[i * 3 + 2] - cam.z + t * this.wind.z * 2 + sw * 0.7) % 100 + 100) % 100); }
+      a.needsUpdate = true; this.embers.material.opacity = k * (0.25 + 0.75 * lavaK);
+    }
+    // eruptions: every half a minute or so while you can see the plume (and one soon after you first get close)
+    if (this.plume.visible) {
+      this.nextErupt -= dt;
+      if (!this.visited && Math.hypot(P.pos.x - EMBER.x, P.pos.z - EMBER.z) < 170) { this.visited = true; this.nextErupt = Math.min(this.nextErupt, 2.5); }
+      if (this.nextErupt <= 0) { this.erupt(game); this.since = 0; this.nextErupt = 24 + Math.random() * 18; }
+    }
+    if (this.quake > 0) { game.shake = Math.max(game.shake || 0, this.quake * 0.55); this.quake = Math.max(0, this.quake - dt * 0.4); }
+    this.hazard(dt, game);
+    // smoky haze over the island (only out in the open; the tube and the caves set their own)
+    if (L && (k > 0 || this.wasIn) && Cave.k <= 0 && LavaTube.k <= 0 && Winter.k <= 0) {
+      const c = (this._hc || (this._hc = new THREE.Color())).set(0x8a6c5c).lerp(this._hn || (this._hn = new THREE.Color(0x2a1410)), night);
+      fog.color.lerp(c, 0.5 * k); fog.near = L.fogNear * lerp(1, 0.55, k); fog.far = L.fogFar * lerp(1, 0.72, k);
+      this.wasIn = k > 0;
+    }
+    Sound.volcano && Sound.volcano(under ? 0 : k, under ? 0 : lavaK, dt);
+  },
+  updateBombs(dt, game) {
+    const im = this.bombMesh, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(), c = new THREE.Color(), hot = new THREE.Color(0xffd27a), cool = new THREE.Color(0x4a140a);
+    let any = false;
+    this.bombs.forEach((b, i) => {
+      if (!b.on) return; any = true;
+      if (b.delay > 0) { b.delay -= dt; m4.makeScale(0, 0, 0); im.setMatrixAt(i, m4); return; }
+      b.t += dt; b.vy -= 18 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+      if ((b.trail -= dt) < 0) { b.trail = 0.14; game.particles.emit(b.x, b.y, b.z, 0, 0.5, 0, 0x2e2826, 1.4, 1.4, 2); }
+      const gy = groundHeight(b.x, b.z);
+      if (b.vy < 0 && b.y < gy + b.s * 0.5) {
+        b.on = false; m4.makeScale(0, 0, 0); im.setMatrixAt(i, m4);
+        for (let k = 0; k < 6; k++) game.particles.emit(b.x, gy + 0.5, b.z, (Math.random() - 0.5) * 6, 2 + Math.random() * 4, (Math.random() - 0.5) * 6, k < 3 ? 0x5a504c : 0xff8a30, 1.6, 1.3, 2.4);
+        const P = game.player, dd = Math.hypot(P.pos.x - b.x, P.pos.z - b.z); if (dd < 30) { game.shake = Math.max(game.shake || 0, 0.35 * (1 - dd / 30)); Sound.thud && Sound.thud(0.5 * (1 - dd / 30)); }
+        return;
+      }
+      e.set(b.t * 3, b.t * 2, 0); q.setFromEuler(e); sc.setScalar(b.s); v.set(b.x, b.y, b.z); m4.compose(v, q, sc); im.setMatrixAt(i, m4);
+      c.copy(hot).lerp(cool, smooth(0, 5, b.t)); im.setColorAt(i, c);
+    });
+    if (any || this.bombsWere) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+    this.bombsWere = any;
+  },
+  // ---------- lava burns: drive into it and you're done ----------
+  hazard(dt, game) {
+    const P = game.player;
+    if (!game.driving || P.onDeck || Math.abs(P.pos.x - EMBER.x) > 330 || Math.abs(P.pos.z - EMBER.z) > 330) { this.hot = 0; return; }
+    const x = P.pos.x, z = P.pos.z, dc = Math.hypot(x - EMBER.x, z - EMBER.z);
+    let hot = dc < EMBER.lake + 5 && P.pos.y < EMBER.lakeY + 2.2;
+    if (!hot && this.stations) for (const s of this.stations) { if (s.under) continue; const dd = (x - s.x) ** 2 + (z - s.z) ** 2; if (dd < (s.w * 0.85) ** 2 && P.pos.y < s.y + 1.8 && P.pos.y > s.y - 3) { hot = true; break; } }
+    if (!hot && this.spill) for (const s of this.spill) { if ((x - s.x) ** 2 + (z - s.z) ** 2 < 4 && P.pos.y < s.y + 1.5 && P.pos.y > s.y - 3) { hot = true; break; } }
+    if (hot) {
+      this.hot += dt; P.vx *= Math.pow(0.35, dt); P.vz *= Math.pow(0.35, dt);
+      if (Math.random() < 0.8) game.particles.emit(x + (Math.random() - 0.5) * 2, P.pos.y + 0.6, z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 3 + Math.random() * 2, (Math.random() - 0.5) * 2, Math.random() < 0.5 ? 0x2e2a28 : 0xff9a3a, 1.6, 1.1, 2.2);
+      if (!this.sizzling) { this.sizzling = true; Sound.sizzle && Sound.sizzle(); }
+      if (this.hot > 0.45) { this.hot = 0; this.sizzling = false; UI.flash('Too hot! Back to the road', 1.4); game.respawn(); }
+    } else { this.hot = Math.max(0, this.hot - dt); this.sizzling = false; }
+  },
+};
+
+// ============================================================
 //  Arcade vehicle physics
 // ============================================================
 const SURF = {
@@ -5748,6 +7049,8 @@ const SURF = {
   grass: { grip: 0.74, roll: 1.6, dust: 0xd9cfa6 },
   sand: { grip: 0.64, roll: 2.4, dust: 0xe2c690 },
   snow: { grip: 0.58, roll: 1.8, dust: 0xffffff },
+  ice: { grip: 0.3, roll: 0.06, dust: 0xdff3ff },
+  ash: { grip: 0.7, roll: 1.5, dust: 0x4e4846 }, // Cinder Isle: loose dark volcanic ash // Glass Lake: hardly any grip, and the car glides on and on
   water: { grip: 0.35, roll: 9.0, dust: 0xcfeefa },
   moon: { grip: 0.86, roll: 1.1, dust: 0xc4c3bd }, // loose grey regolith
 };
@@ -5893,7 +7196,7 @@ class Vehicle {
     const B = W.half - 6;
     if (Math.abs(this.pos.x) > B) { this.pos.x = Math.sign(this.pos.x) * B; this.vx *= -0.3; }
     if (Math.abs(this.pos.z) > B) { this.pos.z = Math.sign(this.pos.z) * B; this.vz *= -0.3; }
-    Cave.contain(this); // the cave's walls are solid (nobody climbs out into the hill above)
+    Cave.contain(this); LavaTube.contain(this); // tunnel walls are solid (nobody climbs out into the hill above)
     // vertical: terrain, or a bridge/ramp deck if we're on (or just above) one
     let gT = groundHeight(this.pos.x, this.pos.z); const mG = moonGround(this.pos.x, this.pos.z, this.pos.y); this.onMoon = mG > gT; if (this.onMoon) gT = mG;
     const dk = deckAt(this.pos.x, this.pos.z, this.pos.y);
@@ -6829,7 +8132,7 @@ const Sound = {
     if (L.wind) { L.wind.g.gain.setTargetAtTime(w * 0.42 * L.wind.k, t, 0.2); L.wind.s.playbackRate.setTargetAtTime(0.8 + Math.min(0.5, car.speed / 110), t, 0.3); this.wind.g.gain.setTargetAtTime(0, t, 0.2); }
     else this.wind.g.gain.setTargetAtTime(Math.min(0.28, car.speed * car.speed * 0.00009), t, 0.2);
     // gravel / dirt
-    const rough = car.surface !== 'road' && car.onGround ? Math.min(1, car.speed * 0.04) * ck : 0;
+    const rough = car.surface !== 'road' && car.surface !== 'ice' && car.onGround ? Math.min(1, car.speed * 0.04) * ck : 0;
     if (L.gravel) { L.gravel.g.gain.setTargetAtTime(rough * 0.5 * L.gravel.k, t, 0.1); L.gravel.s.playbackRate.setTargetAtTime(0.8 + Math.min(0.4, car.speed / 80), t, 0.2); this.gravel.g.gain.setTargetAtTime(0, t, 0.1); }
     else this.gravel.g.gain.setTargetAtTime(rough * 0.3, t, 0.1);
     // ambience: surf by the sea, rain, meadow birds when it's quiet
@@ -6989,7 +8292,7 @@ const Sound = {
   },
   crash(k) { if (!this.play(k > 0.55 ? 'crash_heavy' : 'crash_light', Math.min(1, 0.35 + k))) this.thud(k); },
   // ---------- Emerald Caverns: echo, a low drone, cave air and drips (k = how far in you are) ----------
-  cave(k, dt) {
+  cave(k, dt, drips = true) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
     if (!this.cv) {
@@ -7014,13 +8317,80 @@ const Sound = {
     cv.send.gain.setTargetAtTime(0.55 * k, t, 0.3); cv.dg.gain.setTargetAtTime(0.07 * k, t, 0.5); cv.ag.gain.setTargetAtTime(0.035 * k, t, 0.5);
     if (k <= 0.001 && cv.linked) { cv.off = (cv.off || 0) + dt; if (cv.off > 3) { try { this.comp.disconnect(cv.send); } catch (e) { } cv.linked = false; cv.off = 0; } } else cv.off = 0;
     // drips
-    if (k > 0.3 && (cv.drip -= dt) <= 0) {
+    if (drips && k > 0.3 && (cv.drip -= dt) <= 0) {
       cv.drip = 0.5 + Math.random() * 2.2;
       const o = ctx.createOscillator(), g = ctx.createGain(), pn = ctx.createStereoPanner(), f0 = 1300 + Math.random() * 1400;
       o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 1.6, t + 0.05);
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07 * k, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
       pn.pan.value = Math.random() * 1.6 - 0.8; o.connect(g).connect(pn).connect(this.comp); o.start(t); o.stop(t + 0.25);
     }
+  },
+  // Frostpeak Isle: wind howling over the snowfields (k = how close you are)
+  winter(k, dt) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.wn) {
+      if (k <= 0) return;
+      const n = ctx.createBufferSource(); n.buffer = this.nb; n.loop = true;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 2.2;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.11; const lg = ctx.createGain(); lg.gain.value = 260; lfo.connect(lg).connect(bp.frequency);
+      const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.07; const lg2 = ctx.createGain(); lg2.gain.value = 0.4;
+      const g = ctx.createGain(); g.gain.value = 0; const am = ctx.createGain(); am.gain.value = 0.6; lfo2.connect(lg2).connect(am.gain);
+      n.connect(bp).connect(am).connect(g).connect(this.ambBus); n.start(); lfo.start(); lfo2.start();
+      this.wn = { g };
+    }
+    this.wn.g.gain.setTargetAtTime(0.09 * k, t, 0.6);
+  },
+  // Cinder Isle: the mountain's deep rumble, and lava hissing and popping when you're close to it
+  volcano(k, lavaK, dt) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.vo) {
+      if (k <= 0) return;
+      const n = ctx.createBufferSource(); n.buffer = this.nb; n.loop = true;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 120; lp.Q.value = 0.8;
+      const am = ctx.createGain(); am.gain.value = 0.65; const lfo = ctx.createOscillator(); lfo.frequency.value = 0.13; const lg = ctx.createGain(); lg.gain.value = 0.35; lfo.connect(lg).connect(am.gain);
+      const g = ctx.createGain(); g.gain.value = 0; n.connect(lp).connect(am).connect(g).connect(this.ambBus);
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 38; const of = ctx.createBiquadFilter(); of.type = 'lowpass'; of.frequency.value = 150; const og = ctx.createGain(); og.gain.value = 0.18; o.connect(of).connect(og).connect(g);
+      const h = ctx.createBufferSource(); h.buffer = this.nb; h.loop = true; const hp = ctx.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = 3000; hp.Q.value = 0.6; const hg = ctx.createGain(); hg.gain.value = 0;
+      h.connect(hp).connect(hg).connect(this.ambBus);
+      n.start(); lfo.start(); o.start(); h.start(t, 0.37);
+      this.vo = { g, hg, pop: 0.5 };
+    }
+    const vo = this.vo;
+    vo.g.gain.setTargetAtTime(0.42 * k, t, 0.8); vo.hg.gain.setTargetAtTime(0.022 * lavaK, t, 0.4);
+    // pops and gloops from the lava
+    if (lavaK > 0.05 && (vo.pop -= dt) <= 0) {
+      vo.pop = 0.1 + Math.random() * 0.6 / lavaK;
+      const s = ctx.createBufferSource(); s.buffer = this.nb; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900 + Math.random() * 2400; f.Q.value = 3;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09 * lavaK, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      const pn = ctx.createStereoPanner(); pn.pan.value = Math.random() * 1.6 - 0.8; s.connect(f).connect(g).connect(pn).connect(this.comp); s.start(t, Math.random()); s.stop(t + 0.08);
+      if (Math.random() < 0.35) { const o = ctx.createOscillator(), og = ctx.createGain(), f0 = 90 + Math.random() * 90; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 2.2, t + 0.12);
+        og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.08 * lavaK, t + 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); o.connect(og).connect(this.comp); o.start(t); o.stop(t + 0.18); }
+    }
+  },
+  // Mount Ember blows: a deep boom that rolls on (later and softer from far away), then rocks clattering down
+  eruption(near) {
+    if (!this.ctx || near <= 0.02) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + (1 - near) * 1.4, v = 0.2 + 0.8 * near;
+    const s = ctx.createBufferSource(); s.buffer = this.nb; s.loop = true; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(250 + 900 * near, t0); f.frequency.exponentialRampToValueAtTime(60, t0 + 3);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.9 * v, t0 + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.6);
+    s.connect(f).connect(g).connect(this.comp); s.start(t0); s.stop(t0 + 3.7);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(72, t0); o.frequency.exponentialRampToValueAtTime(28, t0 + 1.5);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t0); og.gain.exponentialRampToValueAtTime(0.7 * v, t0 + 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.8); o.connect(og).connect(this.comp); o.start(t0); o.stop(t0 + 1.9);
+    for (let k = 0; k < Math.round(12 * near); k++) {
+      const tt = t0 + 2.2 + Math.random() * 3.5, r = ctx.createBufferSource(); r.buffer = this.nb; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 260 + Math.random() * 300;
+      const rg = ctx.createGain(); rg.gain.setValueAtTime(0.0001, tt); rg.gain.exponentialRampToValueAtTime(0.25 * v, tt + 0.008); rg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.22);
+      r.connect(rf).connect(rg).connect(this.comp); r.start(tt, Math.random()); r.stop(tt + 0.25);
+    }
+  },
+  // tyres in lava
+  sizzle() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.nb; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2200;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    s.connect(f).connect(g).connect(this.comp); s.start(t); s.stop(t + 1);
   },
   // a zombie's moan: a sliding sawtooth through two vowel formants, with a breathy rasp
   zombieGroan(pan = 0, dist = 10) {
@@ -7224,10 +8594,15 @@ const RACES = [
   { id: 'cloudrun', name: 'Cloud Run', blurb: 'Fire off the Cape Magenta launch rail, race the Sky Highway over two cloud jumps and past the Cloud 9 Diner, then boost up the bridge onto the Moon.', level: 'Medium', skill: 0.92,
     route: [{ road: 'farm', from: [-226, 91], to: 'deck:launch' }, { deck: 'launch' }, { deck: 'cloud1' }, { deck: 'cloud2', gap: true }, { deck: 'cloud3', gap: true }, { deck: 'moonbridge' }],
     namedGates: [{ deck: 'cloud2', f: 0.5, label: 'CLOUD 9 DINER' }] },
-  { id: 'moondust', name: 'Moon Dust Rally', blurb: 'Low gravity, loose dust and crater hops round the Moon, then dive the re-entry chute back to Earth. Splashdown after the finish!', level: 'Hard', skill: 0.93,
+  { id: 'moondust', name: 'Moon Dust Rally', blurb: 'Low gravity, loose dust and crater hops round the Moon, then dive the re-entry chute back to Earth. After the finish the kicker throws you out onto the Cinder Causeway (or into the sea)!', level: 'Hard', skill: 0.93,
     route: [{ deck: 'moontrack' }, { deck: 'chute' }] },
   { id: 'cave', name: 'Cave Run', blurb: 'Over the Bayou Causeway to Gator Bayou, then down into the Emerald Caverns: glowing gems, a rock bridge over the chasm, and zombies lurching out of the dark. Out past the graveyard.', level: 'Hard', skill: 0.92,
     route: [{ road: 'causeway', from: [-641, 3], to: 'deck:bayoucauseway' }, { deck: 'bayoucauseway' }, { road: 'bayou', from: 'prev', to: 'deck:caverns' }, { deck: 'caverns' }, { road: 'bayou2', from: 'prev', to: [-1105, -180] }] },
+  { id: 'ice', name: 'Frozen Lake Run', blurb: 'Through the cutting in the North Cliffs, over Frost Bridge to Frostpeak Isle, then straight across the frozen lake on the Ice Road (hardly any grip!) and nearly all the way round it to Snowcap Lodge.', level: 'Hard', skill: 0.9,
+    route: [{ road: 'frost', from: [29, -606], to: 'deck:frostbridge' }, { deck: 'frostbridge' }, { road: 'snowline', from: 'prev', to: [-60, -1018] }, { road: 'iceroad', from: [-60, -1018], to: [-60, -1262] }, { road: 'lakeloop', from: 'prev', to: [26, -1226], dir: 1 }] },
+  { id: 'volcano', name: 'Volcano Climb', blurb: 'Out along the Cinder Causeway to Cinder Isle, twice round Mount Ember on the Ember Road spiral (over the lava river), into the volcano at the summit, then down the Lava Tube past the magma chamber and out at the bottom by the lava flow. Mind the eruptions!', level: 'Hard', skill: 0.92,
+    route: [{ road: 'coast', from: [40, 515], to: 'deck:cindercauseway', dir: -1 }, { deck: 'cindercauseway' }, { road: 'ember', from: 'prev', to: [LAVA_TUBE.pts[0][0], LAVA_TUBE.pts[0][1]] }, { deck: 'lavatube' },
+      { road: 'lavaflow', from: 'prev', to: [EMBER.x + Math.cos(0.98) * 216, EMBER.z + Math.sin(0.98) * 216] }] },
   { id: 'portal', name: 'Portal Rush', blurb: 'Up Sunset Canyon and back down the coast to Bayview through five portals: the whole field turns into Energy Orbs and back again, and the last dash to the flag is pure energy.', level: 'Medium', skill: 0.92,
     route: [{ road: 'canyon', from: [40, 365], to: [588, -230] }, { road: 'coast', from: [588, -230], to: [150, 515], dir: -1 }],
     portals: [1.5 / 12, 3.5 / 12, 5.5 / 12, 7.5 / 12, 9.5 / 12] }, // (between the checkpoints)
@@ -7384,7 +8759,7 @@ const Race = {
     const nearGap = (s) => R.some((q, i) => q.gap && s > R[Math.max(0, i - 6)].s - 4 && s < q.s + 30);
     for (let k = 1; k <= n; k++) {
       let s = k === n ? L - 2 : L * k / n; while (k < n && nearGap(s)) s += 12;
-      const p = routeAt(R, s), dk = deckAt(p.x, p.z, p.y + 1); this.gates.push({ s, x: p.x, z: p.z, y: p.y, tx: p.tx, tz: p.tz, halfW: dk && dk.deck.cave ? 4.4 : p.halfW, finish: k === n }); // (narrow gates in the cave: its walls curve up)
+      const p = routeAt(R, s), dk = deckAt(p.x, p.z, p.y + 1); this.gates.push({ s, x: p.x, z: p.z, y: p.y, tx: p.tx, tz: p.tz, halfW: dk && dk.deck.under ? 4.4 : p.halfW, finish: k === n }); // (narrow gates in the cave: its walls curve up)
     }
     for (const ng of race.namedGates || []) {
       const d = Decks.list.find(q => q.id === ng.deck); if (!d) continue;
@@ -7582,7 +8957,7 @@ const Upgrades = {
   rivalScale() { return 1 + 0.005 * this.total(); },
 };
 
-const CHAMP_ORDER = ['lighthouse', 'canyon', 'gull', 'pass', 'viaduct', 'spiral', 'cave', 'tour', 'cloudrun', 'moondust'];
+const CHAMP_ORDER = ['lighthouse', 'canyon', 'gull', 'pass', 'viaduct', 'spiral', 'cave', 'ice', 'volcano', 'tour', 'cloudrun', 'moondust'];
 const CHAMP_POINTS = [10, 7, 5, 3];       // per finishing place
 const CHAMP_PARTS = [3, 2, 1, 1];         // upgrade points per finishing place
 const Champ = {
@@ -8462,7 +9837,7 @@ const Game = {
     playTitleVideo();
     this.last = performance.now();
     this.placeTimer = 0;
-    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input, Cave, Zones, caveSize, HOLLOW, BAYOU, inCaveHole });
+    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input, Cave, Zones, caveSize, HOLLOW, BAYOU, inCaveHole, Winter, FROST, GLASS, CINDER, EMBER, CINDER_LAND, lavaLine, lavaDist, LavaTube, LAVA_TUBE, caveDeckMouths, Volcano });
     window.claude?.hot?.snapshot?.(() => ({ x: this.player.pos.x, z: this.player.pos.z, heading: this.player.heading, driving: this.driving }));
     if (saved.driving) this.startDriving(true);
     // first touch or key on the title screen wakes the audio so the title music can play
@@ -8609,7 +9984,7 @@ const Game = {
     }
     this.updateCamera(dt);
     this.atmosphere(dt);
-    Cave.update(this.paused ? 0 : dt, this); Zones.update(dt, this);
+    Cave.update(this.paused ? 0 : dt, this); Winter.update(this.paused ? 0 : dt, this); LavaTube.update(this.paused ? 0 : dt, this); Volcano.update(this.paused ? 0 : dt, this); Zones.update(dt, this);
     Sky.update(dt, this); Orb.update(this.paused ? 0 : dt, this);
     World.anim.forEach(f => f(this.t));
     Atmos.update(dt, this);
@@ -8671,7 +10046,7 @@ const Game = {
         if (!C.onGround) continue;
         const emitP = (isP ? 1 : 0.5);
         if (C.surface === 'road' && sliding && Math.random() < 0.7 * emitP) this.particles.emit(wx, C.pos.y + 0.3, wz, (Math.random() - 0.5) * 2 - C.vx * 0.1, 0.8 + Math.random(), (Math.random() - 0.5) * 2 - C.vz * 0.1, 0xf4eef0, 0.9, 1.3, 2.2);
-        else if (surf.dust && C.speed > 6 && Math.random() < Math.min(1, C.speed / 30) * (C.surface === 'grass' ? 0.25 : 0.6) * emitP) this.particles.emit(wx, C.pos.y + 0.2, wz, -C.vx * 0.12 + (Math.random() - 0.5), 0.5 + Math.random() * 0.5, -C.vz * 0.12 + (Math.random() - 0.5), surf.dust, 0.6, 0.9, 1.6);
+        else if (surf.dust && C.speed > 6 && (C.surface !== 'ice' || sliding) && Math.random() < Math.min(1, C.speed / 30) * (C.surface === 'grass' ? 0.25 : 0.6) * emitP) this.particles.emit(wx, C.pos.y + 0.2, wz, -C.vx * 0.12 + (Math.random() - 0.5), 0.5 + Math.random() * 0.5, -C.vz * 0.12 + (Math.random() - 0.5), surf.dust, 0.6, 0.9, 1.6);
       }
       if (Atmos.wet && C.onGround && C.surface === "road" && C.speed > 7 && Math.random() < Math.min(0.55, C.speed / 45) * (isP ? 1 : 0.5)) // spray off wet tarmac
         this.particles.emit(C.pos.x - fx * 2.3 + (Math.random() - 0.5) * 1.6, C.pos.y + 0.35, C.pos.z - fz * 2.3 + (Math.random() - 0.5) * 1.6, -C.vx * 0.18 + (Math.random() - 0.5), 0.6 + Math.random() * 0.6, -C.vz * 0.18 + (Math.random() - 0.5), 0xc9d1da, 0.6, 0.55, 1.8);
@@ -8710,9 +10085,9 @@ const Game = {
     } else {
       const speedK = Math.min(1, P.speed / 50);
       const nf = P.nosFire || 0;
-      const dist = M.dist * (1 + speedK * 0.12 + nf * 0.09) * (1 - Cave.k * 0.14), height = M.height;
+      const dist = M.dist * (1 + speedK * 0.12 + nf * 0.09) * (1 - Math.max(Cave.k, LavaTube.k) * 0.14), height = M.height;
       const want = new THREE.Vector3(P.pos.x - fx * dist, P.pos.y + height, P.pos.z - fz * dist);
-      if (!Cave.clampCam(want, P)) { const gy = surfaceHeight(want.x, want.z, P.pos.y + 6.5) + 1.0; if (want.y < gy) want.y = gy; } // (looks higher up for decks, so a steep chute behind you lifts the camera; in the cave it stays in the tunnel)
+      if (!Cave.clampCam(want, P) && !LavaTube.clampCam(want, P)) { const gy = surfaceHeight(want.x, want.z, P.pos.y + 6.5) + 1.0; if (want.y < gy) want.y = gy; } // (looks higher up for decks, so a steep chute behind you lifts the camera; in the cave it stays in the tunnel)
       const kp = this.snapCam ? 1 : 1 - Math.exp(-dt * 10);
       this.camPos.lerp(want, kp); this.snapCam = false;
       cam.position.copy(this.camPos);
