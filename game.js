@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
-const M67_BUILD = '31bee262c9';
+const M67_BUILD = 'cb9b8bf888';
 { const m = document.querySelector('meta[name="m67-build"]');
   if (!m || m.content !== M67_BUILD) { let tried = false; try { tried = sessionStorage.getItem('m67-fresh') === M67_BUILD; sessionStorage.setItem('m67-fresh', M67_BUILD); } catch (e) { }
     if (!tried) { location.replace(location.pathname + '?v=' + M67_BUILD + location.hash); throw new Error('Loading the new version of Magenta 67'); } }
@@ -2428,6 +2428,46 @@ function cinderHeight(x, z, dRoad) {
   return h;
 }
 
+// ---------- Atlantis (east, v13.4): a sunken city of ruins and crystal machines in a deep basin off the east coast ----------
+// You get down there on the Dive Ramp (off the Coast Highway, plunging under the waves through a bubble gate: an air
+// bubble wraps the car and you can drive anywhere on the seabed), then the Crystal Line (an air-filled glass tube round
+// the city), the Grand Canal (a walled channel with a glass roof) into the Great Dome, and the Skyward Tube back up.
+const ATL = { x: 1120, z: -30, r: 300, floor: -38, dome: 46, domeH: 30 };
+function atlNear(x, z) { return Math.abs(x - ATL.x) < ATL.r + 70 && Math.abs(z - ATL.z) < ATL.r + 70 && Math.hypot(x - ATL.x, z - ATL.z) < ATL.r + 70; }
+function atlWeight(x, z) { const d = Math.hypot(x - ATL.x, z - ATL.z) + 22 * Noise.fbm(x / 160 + 9, z / 160 - 4, 3); return smooth(ATL.r + 45, ATL.r - 55, d); }
+// the Grand Canal runs from the end of the Crystal Line (south-east) straight into the Great Dome
+const ATL_CANAL = { a: [1198, 71.6], b: [ATL.x + 14 * 0.609, ATL.z + 14 * 0.794] }; // (the Crystal Line curves in to meet it head on)
+function atlCanalDist(x, z) {
+  const [ax, az] = ATL_CANAL.a, [bx, bz] = ATL_CANAL.b, ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez;
+  const t = clamp(((x - ax) * ex + (z - az) * ez) / L2, 0.22, 1); return Math.hypot(x - ax - ex * t, z - az - ez * t);
+}
+function atlantisHeight(x, z, dRoad) {
+  const d = Math.hypot(x - ATL.x, z - ATL.z), a = Math.atan2(z - ATL.z, x - ATL.x);
+  let h = ATL.floor + 1.4 * Noise.fbm(x / 60 + 3, z / 60, 3) + 0.35 * Math.sin(x / 6 + 3 * Noise.simplex(x / 40, z / 40)) * smooth(60, 120, d); // sand and ripples
+  // a ring of rocky ridges round the basin, with gaps
+  const rim = Math.pow(Math.max(0, 1 - Math.abs(d - 262) / 36), 1.5) * (11 + 9 * Noise.fbm(x / 45, z / 45 + 7, 3)) * smooth(-0.1, 0.3, Noise.simplex(a * 3, 1.7));
+  h += rim * smooth(12, 34, dRoad);
+  // the city terrace the Grand Canal is cut through (the canal deck cuts its own channel)
+  const dc = atlCanalDist(x, z); h = lerp(h, -29.5 + 0.4 * Noise.simplex(x / 12, z / 12), smooth(36, 26, dc) * smooth(ATL.dome + 6, ATL.dome + 16, d));
+  // the plaza round (and under) the Great Dome: dead flat
+  h = lerp(h, ATL.floor, smooth(ATL.dome + 18, ATL.dome + 4, d));
+  return h;
+}
+const ATL_PAL = { sand: new THREE.Color(0xd8c496), sandD: new THREE.Color(0xa99a74), rock: new THREE.Color(0x5d6b68), algae: new THREE.Color(0x4f7a52), marble: new THREE.Color(0xe6e0d2), tile: new THREE.Color(0xb9b2a2), glyph: new THREE.Color(0x58d7e8) };
+function atlColor(x, z, h, slope, dRoad, w, out) {
+  const d = Math.hypot(x - ATL.x, z - ATL.z), n1 = Noise.simplex(x / 25, z / 25), n2 = Noise.simplex(x / 6 + 4, z / 6);
+  const c = ATL_PAL.sand.clone().lerp(ATL_PAL.sandD, 0.35 + 0.3 * n1 + 0.15 * n2);
+  c.lerp(ATL_PAL.algae, Math.max(0, Noise.fbm(x / 55 - 2, z / 55 + 6, 2) - 0.1) * 0.9);
+  if (slope > 0.45) c.lerp(ATL_PAL.rock, smooth(0.45, 0.9, slope));
+  if (h > -31 && atlCanalDist(x, z) < 38) c.copy(ATL_PAL.tile).lerp(ATL_PAL.marble, 0.5 + 0.4 * n2); // the city terrace: paving
+  if (d < ATL.dome + 14) { // the plaza: marble paving with a ring of glowing glyphs
+    const g = (Math.abs(((x - ATL.x) % 6 + 6) % 6 - 3) < 0.25 || Math.abs(((z - ATL.z) % 6 + 6) % 6 - 3) < 0.25) ? 1 : 0;
+    c.copy(ATL_PAL.marble).lerp(ATL_PAL.tile, 0.3 + 0.5 * g); if (Math.abs(d - 24) < 1.2) c.lerp(ATL_PAL.glyph, 0.7);
+  }
+  if (dRoad < 8) c.lerp(ATL_PAL.tile, smooth(8, 5, dRoad) * 0.5);
+  return out.lerp(c, w);
+}
+
 // ---------- island shapes ----------
 function isleNear(x, z) { return Math.hypot(x - BAYOU.x, z - BAYOU.z) < BAYOU.r + 70 || Math.hypot(x - FROST.x, z - FROST.z) < FROST.r + 70 || Math.hypot(x - CINDER.x, z - CINDER.z) < CINDER.r + 70; }
 function isleParams(x, z) {
@@ -2560,6 +2600,8 @@ const ROAD_DEFS = [
       const P = (a, r) => [EMBER.x + Math.cos(a) * r, EMBER.z + Math.sin(a) * r], last = LAVA_TUBE.pts[LAVA_TUBE.pts.length - 1];
       const E = EMBER_SPIRAL, aj = -0.52, rj = lerp(E.r0, E.r1, (aj - E.a0) / (E.laps * TAU));
       return [[last[0], last[1]], P(1.19, 218), P(1.0, 216), P(0.8, 213), P(0.55, 210), P(0.3, 207), P(0.05, 205), P(-0.2, 200), P(-0.38, 193), P(aj, rj)]; })() },
+  // Atlantis: from the foot of the Dive Ramp along the seabed between columns and statues to the Crystal Line's airlock
+  { id: 'abyss', name: 'Abyss Road', halfW: 5.0, subsea: true, pts: [[875, -22], [900, -23], [925, -24.5], [950, -27], [972, -30]] },
   { id: 'islet', name: 'Gull Rock Loop', halfW: 4.2, closed: true, fixedY: 30.2, pts: Array.from({ length: 12 }, (_, k) => [700 + Math.cos(k / 12 * Math.PI * 2) * 37, 690 + Math.sin(k / 12 * Math.PI * 2) * 37]) },
 ];
 
@@ -2589,6 +2631,13 @@ const PLACES = [
   { name: 'Ember Observatory', sub: 'Summit of Mount Ember', x: EMBER.x - 10, z: EMBER.z - 45, r: 26 },
   { name: 'Cinder Causeway', sub: 'To Cinder Isle', x: -103, z: 699, r: 150 },
   { name: 'Basalt Stairs', sub: 'Cinder Isle', x: EMBER.x - 250, z: EMBER.z + 36, r: 60 },
+  { name: 'Atlantis', sub: 'Sunken city', x: ATL.x, z: ATL.z, r: 330 },
+  { name: 'Great Dome', sub: 'Atlantis', x: ATL.x, z: ATL.z, r: 56 },
+  { name: 'Dive Ramp', sub: 'To Atlantis', x: 765, z: -20, r: 80 },
+  { name: 'Processional Way', sub: 'Atlantis', x: 925, z: -25, r: 55 },
+  { name: 'Temple of the Tides', sub: 'Atlantis', x: ATL.x + Math.cos(1.9) * 112, z: ATL.z + Math.sin(1.9) * 112, r: 42 },
+  { name: 'Grand Canal', sub: 'Atlantis', x: (ATL_CANAL.a[0] + ATL_CANAL.b[0]) / 2, z: (ATL_CANAL.a[1] + ATL_CANAL.b[1]) / 2, r: 40 },
+  { name: 'Skyward Tube', sub: 'Atlantis', x: 900, z: -90, r: 70 },
   { name: 'Glass Lake', sub: 'Frozen solid', x: -60, z: -1140, r: 135 },
   { name: 'Frostpeak', sub: 'Frostpeak Isle', x: -180, z: -1345, r: 120 },
   { name: 'Frost Bridge', sub: 'To Frostpeak Isle', x: 37, z: -800, r: 90 },
@@ -2669,12 +2718,13 @@ function mainHeight(x, z, dRoad) {
 }
 // the whole world: the main island, the new islands round it, open sea everywhere else (cheap)
 function rawHeight(x, z, dRoad) {
-  const nm = mainNear(x, z), isle = isleParams(x, z);
-  if (!nm && !isle.any) return seaFloor(x, z);
+  const nm = mainNear(x, z), isle = isleParams(x, z), atl = atlNear(x, z) ? atlWeight(x, z) : 0;
+  if (!nm && !isle.any && atl <= 0) return seaFloor(x, z);
   let h = nm ? mainHeight(x, z, dRoad) : seaFloor(x, z);
   if (isle.bayou > 0) h = lerp(h, bayouHeight(x, z, dRoad), isle.bayou);
   if (isle.frost > 0) h = lerp(h, frostHeight(x, z, dRoad), isle.frost);
   if (isle.cinder > 0) h = lerp(h, cinderHeight(x, z, dRoad), isle.cinder);
+  if (atl > 0) h = lerp(h, atlantisHeight(x, z, dRoad), atl);
   return h;
 }
 
@@ -2784,7 +2834,7 @@ function buildWorld(scene, quality) {
       for (let i = 0; i < n; i++) { let s = 0; for (let k = -R; k <= R; k++) s += y[idx(i + k)]; ny[i] = s / (2 * R + 1); }
       y = ny;
     }
-    y = y.map(v => Math.max(v, 1.6));
+    if (!r.subsea) y = y.map(v => Math.max(v, 1.6));
     const g = 0.1 * 2.5;
     for (let it = 0; it < (cl ? 3 : 1); it++) {
       for (let i = 1; i < n + (cl ? 1 : 0); i++) { const a = idx(i - 1), b = idx(i); y[b] = clamp(y[b], y[a] - g, y[a] + g); }
@@ -2876,6 +2926,7 @@ function buildWorld(scene, quality) {
   buildGuardrails(scene);
   Winter.build(scene); // Frostpeak Isle (38_winter.js)
   Volcano.build(scene); // Cinder Isle (39_volcano.js)
+  Atlantis.build(scene); // the sunken city off the east coast (41_atlantis.js)
   buildMinimapImage();
   console.log('world', (performance.now() - t0).toFixed(0), 'ms');
 }
@@ -2899,6 +2950,7 @@ function surfaceAt(x, z) {
   const h = groundHeight(x, z);
   if (isleNear(x, z) && Math.hypot(x - FROST.x, z - FROST.z) < FROST.r + 40 && h > 0.3) return inGlass(x, z) && h < GLASS.y + 0.4 ? 'ice' : 'snow'; // Frostpeak Isle
   if (isleNear(x, z) && Math.hypot(x - CINDER.x, z - CINDER.z) < CINDER.r + 40 && h > 0.3) return 'ash'; // Cinder Isle: loose volcanic ash
+  if (h < -0.5 && atlNear(x, z) && atlWeight(x, z) > 0.2) return Math.hypot(x - ATL.x, z - ATL.z) < ATL.dome + 2 ? 'road' : 'sand'; // Atlantis: the seabed (you're in a bubble down here)
   if (h < -0.5) return 'water';
   const L = W.lake; if (Math.hypot(x - L.x, z - L.z) < L.r - 4 && h < L.level - 0.4) return 'water';
   const b = biomeAt(x, z);
@@ -2960,7 +3012,7 @@ function terrainColor(x, z, h, slope, dRoad, out) {
   if (dL < L.r + 10 && h < L.level + 1.2) c.lerp(PAL.wetSand, 0.6);
   // road shoulders (dirt)
   if (dRoad < 8.5) c.lerp(PAL.dirt.clone().lerp(PAL.sand, b.wD * 0.5), smooth(8.5, 5.5, dRoad) * 0.75);
-  const isle = isleParams(x, z); if (isle.bayou > 0) isleColor(x, z, h, slope, dRoad, isle.bayou, c); if (isle.frost > 0) frostColor(x, z, h, slope, dRoad, isle.frost, c); if (isle.cinder > 0) cinderColor(x, z, h, slope, dRoad, isle.cinder, c);
+  const isle = isleParams(x, z); if (isle.bayou > 0) isleColor(x, z, h, slope, dRoad, isle.bayou, c); if (isle.frost > 0) frostColor(x, z, h, slope, dRoad, isle.frost, c); if (isle.cinder > 0) cinderColor(x, z, h, slope, dRoad, isle.cinder, c); if (atlNear(x, z)) { const aw = atlWeight(x, z); if (aw > 0 && h < -4) atlColor(x, z, h, slope, dRoad, aw * smooth(-4, -9, h), c); }
   return c;
 }
 
@@ -2982,7 +3034,8 @@ function buildTerrainMesh(scene, H, dist) {
   for (let cj = 0; cj < CH; cj++) for (let ci = 0; ci < CH; ci++) {
     const vn = per + 1;
     let hmax = -Infinity; for (let j = 0; j < vn; j++) for (let i = 0; i < vn; i++) { const v = H[(cj * per + j) * N + ci * per + i]; if (v > hmax) hmax = v; }
-    if (hmax < -3.5) continue; // open sea: the sea bed plane covers it
+    const ccx = -half + (ci + 0.5) * per * cell, ccz = -half + (cj + 0.5) * per * cell;
+    if (hmax < -3.5 && Math.hypot(ccx - ATL.x, ccz - ATL.z) > ATL.r + 170) continue; // open sea: the sea bed plane covers it (Atlantis is down there, though)
     const pos = new Float32Array(vn * vn * 3), cl = new Float32Array(vn * vn * 3), idx = [];
     for (let j = 0; j < vn; j++) for (let i = 0; i < vn; i++) {
       const gi = ci * per + i, gj = cj * per + j, k = gj * N + gi, o = (j * vn + i) * 3;
@@ -3053,7 +3106,10 @@ function buildWater(scene) {
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000, 1, 1), mat);
   sea.rotation.x = -Math.PI / 2; sea.position.y = W.sea; sea.receiveShadow = true; scene.add(sea);
   World.sea = sea;
-  const bed = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshLambertMaterial({ color: 0x3e4f86 })); bed.rotation.x = -Math.PI / 2; bed.position.y = -11.5; scene.add(bed);
+  // the sea bed plane (stands in for the open-sea terrain we don't build) has a hole over Atlantis, which sits far below it
+  const bs = new THREE.Shape([new THREE.Vector2(-3000, -3000), new THREE.Vector2(3000, -3000), new THREE.Vector2(3000, 3000), new THREE.Vector2(-3000, 3000)]);
+  bs.holes.push(new THREE.Path().absarc(ATL.x, -ATL.z, ATL.r + 120, 0, Math.PI * 2, true));
+  const bed = new THREE.Mesh(new THREE.ShapeGeometry(bs, 48), new THREE.MeshLambertMaterial({ color: 0x3e4f86 })); bed.rotation.x = -Math.PI / 2; bed.position.y = -11.5; scene.add(bed);
   const lake = new THREE.Mesh(new THREE.CircleGeometry(W.lake.r + 22, 48), new THREE.MeshStandardMaterial({ color: 0x3b8fb0, roughness: 0.08, metalness: 0.05, transparent: true, opacity: 0.82 }));
   lake.rotation.x = -Math.PI / 2; lake.position.set(W.lake.x, W.lake.level, W.lake.z); scene.add(lake);
 }
@@ -3429,7 +3485,7 @@ function buildMinimapImage() {
     const k = j * N + i; const h = World.H[k];
     let r = col[k * 3], g = col[k * 3 + 1], b = col[k * 3 + 2];
     const L = W.lake;
-    if (h < 0 || (Math.hypot(wx - L.x, wz - L.z) < L.r + 4 && h < L.level)) { r = 0.33; g = 0.68; b = 0.78; if (isleNear(wx, wz) && isleParams(wx, wz).bayou > 0.5) { r = 0.16; g = 0.24; b = 0.15; } } // (bayou pools: black water)
+    if (h < 0 || (Math.hypot(wx - L.x, wz - L.z) < L.r + 4 && h < L.level)) { const dk = smooth(-12, -40, h); r = lerp(0.33, 0.1, dk); g = lerp(0.68, 0.36, dk); b = lerp(0.78, 0.62, dk); if (isleNear(wx, wz) && isleParams(wx, wz).bayou > 0.5) { r = 0.16; g = 0.24; b = 0.15; } } // (bayou pools: black water)
     // hill shading
     const hx = World.H[k + (i < N - 1 ? 1 : 0)] - World.H[k - (i > 0 ? 1 : 0)];
     const sh = clamp(1 - hx * 0.04, 0.75, 1.2);
@@ -3446,6 +3502,7 @@ function buildMinimapImage() {
     ctx.strokeStyle = pass ? '#fff7e8' : 'rgba(20,33,61,0.55)'; ctx.lineWidth = pass ? 2.2 : 4.2; ctx.stroke();
   }
   drawDecksOnMinimap(ctx, toPx);
+  ctx.beginPath(); ctx.arc(toPx(ATL.x), toPx(ATL.z), ATL.dome / (2 * W.half) * S, 0, TAU); ctx.fillStyle = 'rgba(160,245,255,0.35)'; ctx.fill(); ctx.strokeStyle = '#bff8ff'; ctx.lineWidth = 2; ctx.stroke(); // the Great Dome
   World.minimapImage = c;
 }
 
@@ -3574,6 +3631,23 @@ function deckLayout() {
     pts: LAVA_TUBE.pts.map((p, i, a) => [p[0], p[1], i === 0 || i === a.length - 1 ? 'road' : p[2]]),
     channel: { flat: LAVA_TUBE.flat, k: LAVA_TUBE.k, rampIn: 18, rampOut: 18 }, bank: { k: 5, max: 0.07 },
   });
+  // 9) Atlantis (east, v13.4). The Dive Ramp leaves the Coast Highway and plunges under the waves (a bubble gate at the
+  //    waterline wraps the car in air); the Crystal Line is an air-filled glass tube round the city; the Grand Canal a
+  //    walled channel with a glass roof into the Great Dome; the Skyward Tube climbs back to the surface and the Skyway
+  //    Causeway brings you home. (`atl` decks go right down to the seabed; 41_atlantis.js dresses them.)
+  {
+    const C = ATL_CANAL, cp = (t, y) => [lerp(C.a[0], C.b[0], t), lerp(C.a[1], C.b[1], t), y];
+    defs.push({ id: 'diveramp', name: 'Dive Ramp', halfW: 5.5, style: 'viaduct', atl: true,
+      pts: [[629, -20, 'road'], [648, -20, 'road+0.2'], [672, -20, 15.0], [700, -20, 11.5], [725, -20, 5.5], [750, -20, -1.5], [775, -20, -9], [800, -20, -16], [825, -20, -23], [850, -21, -29], [875, -22, 'road']] });
+    defs.push({ id: 'crystalline', name: 'Crystal Line', halfW: 5.2, style: 'viaduct', atl: true, glass: true, dry: true, noLamps: true,
+      pts: [[972, -30, 'road'], [990, -36, -35.2], [1003, -72, -33], [1036, -125, -31], [1092, -162, -30], [1160, -170, -30], [1225, -148, -30.6], [1270, -108, -31.5], [1296, -50, -32.4], [1300, 10, -33.3], [1273.1, 68.4, -34.4], [1243.4, 88.6, -35.6], [1208.4, 81.3, -36.9], [C.a[0], C.a[1], -37.4]] });
+    defs.push({ id: 'grandcanal', name: 'Grand Canal', halfW: 7, style: 'viaduct', atl: true, canal: true, dry: true, noLamps: true,
+      pts: [cp(0, -37.4), cp(0.33, -37.6), cp(0.66, -37.75), cp(0.85, -37.9), cp(1, -37.95)] });
+    defs.push({ id: 'skyward', name: 'Skyward Tube', halfW: 5.2, style: 'viaduct', atl: true, glass: true, dry: true, noLamps: true,
+      pts: [[1102, -35, -37.9], [1075, -41, -37.6], [1040, -50, -31], [1000, -60, -22.5], [950, -75, -15], [900, -90, -8.5], [850, -100, -3], [800, -110, 1.5]] });
+    defs.push({ id: 'skyway', name: 'Skyway Causeway', halfW: 5.2, style: 'viaduct', atl: true,
+      pts: [[800, -110, 1.5], [760, -112, 3.5], [725, -112, 7], [690, -111, 11.5], [655, -110, 'road+0.3'], [622, -109, 'road']] });
+  }
   // 7) Emerald Caverns: an underground deck right through Hollow Hill (37_cave.js builds the cave round it).
   //    'under' decks win over the hill above them whenever you're down at their level.
   defs.push({
@@ -3821,7 +3895,7 @@ function buildDeckMeshes(scene) {
       }
     }
     // lamps along bridges
-    if (d.style !== 'stunt') for (let i = 6; i < n - 6; i += 12) { if (!high[i]) continue; const p = S[i], side = (i / 12) % 2 ? 1 : -1; World.deckLamps.push({ x: p.x - p.tz * side * (hw + 0.1), y: p.y, z: p.z + p.tx * side * (hw + 0.1), side, p }); }
+    if (d.style !== 'stunt' && !d.noLamps) for (let i = 6; i < n - 6; i += 12) { if (!high[i]) continue; const p = S[i], side = (i / 12) % 2 ? 1 : -1; World.deckLamps.push({ x: p.x - p.tz * side * (hw + 0.1), y: p.y, z: p.z + p.tx * side * (hw + 0.1), side, p }); }
     buildDeckSupports(scene, d, depth);
     if (d.lip) { // chevron kicker face + JUMP banner
       const L = S[n - 1], kick = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, 0.9), M.chevron);
@@ -3848,7 +3922,7 @@ function buildDeckSupports(scene, d, depth) {
     if (isSusp && towerIdx.some(t => Math.abs(t - i) < 5)) continue;
     if (archA >= 0 && i > archA && i < archB) continue; // carried by the arch
     if (d.helix) { const dc = Math.hypot(p.x - d.helix.x, p.z - d.helix.z); if (dc < d.helix.r + 3 && p.y > d.helix.base + 2.5) continue; }
-    const top = p.y - depth, gy = Math.max(groundHeight(p.x, p.z), -9.5);
+    const top = p.y - depth, gy = d.atl ? groundHeight(p.x, p.z) : Math.max(groundHeight(p.x, p.z), -9.5);
     if (top - gy < 1.4) continue;
     for (const side of [-1, 1]) {
       const x = p.x - p.tz * side * (hw - 1.4), z = p.z + p.tx * side * (hw - 1.4);
@@ -3976,6 +4050,7 @@ function drawDecksOnMinimap(ctx, toPx) {
     ctx.beginPath(); d.samples.forEach((p, i) => i ? ctx.lineTo(toPx(p.x), toPx(p.z)) : ctx.moveTo(toPx(p.x), toPx(p.z)));
     if (d.sky) { ctx.setLineDash(pass ? [5, 3] : []); ctx.strokeStyle = pass ? '#9fe8ff' : 'rgba(20,33,61,0.35)'; ctx.lineWidth = pass ? 1.8 : 3.6; }
     else if (d.cave) { ctx.setLineDash(pass ? [4, 3] : []); ctx.strokeStyle = pass ? '#5dff9f' : 'rgba(10,20,14,0.7)'; ctx.lineWidth = pass ? 2.2 : 4.6; } // underground: dashed green
+    else if (d.glass || d.canal) { ctx.setLineDash(pass ? [5, 3] : []); ctx.strokeStyle = pass ? '#8ff6ff' : 'rgba(6,30,50,0.75)'; ctx.lineWidth = pass ? 2.6 : 5; } // Atlantis: glass tubes and the canal
     else if (d.lava) { ctx.setLineDash(pass ? [4, 3] : []); ctx.strokeStyle = pass ? '#ff8a3a' : 'rgba(30,8,4,0.7)'; ctx.lineWidth = pass ? 2.2 : 4.6; } // the lava tube: dashed orange
     else { ctx.setLineDash([]); ctx.strokeStyle = pass ? '#ffd166' : 'rgba(20,33,61,0.6)'; ctx.lineWidth = pass ? 2.2 : 4.4; }
     ctx.stroke();
@@ -5204,7 +5279,7 @@ const Atmos = {
     const show = [...this.heads, this.rainMesh, this.glowPts, this.pools, this.beam].filter(Boolean), was = show.map(o => o.visible);
     const roads = World.roadMats || [], keep = roads.map(m => m.envMap);
     const pass = (lightsOn, wet) => {
-      show.forEach((o, i) => o.visible = lightsOn ? true : was[i]);
+      show.forEach((o, i) => o.visible = lightsOn ? true : this.heads.includes(o) ? false : was[i]); // (with the headlights off too: their spot lights change every program)
       roads.forEach((m, i) => { const want = wet ? sc.environment : keep[i]; if (m.envMap !== want) { m.envMap = want; if (wet) { m.combine = THREE.MixOperation; m.reflectivity = 0.32; } m.needsUpdate = true; } });
       warmCompile(game);
       if (!wet) shadowAll();
@@ -7094,7 +7169,7 @@ class Vehicle {
     let vF = this.vx * fx + this.vz * fz;
     let vL = this.vx * lx + this.vz * lz;
     const S = SURF[this.surface] || SURF.road;
-    const gk = this.gk = Sky.gravK(this.pos.x, this.pos.y, this.pos.z); // the Moon pulls a lot less
+    const gk = this.gk = Sky.gravK(this.pos.x, this.pos.y, this.pos.z) * (this.bubble ? 0.62 : 1); // the Moon pulls a lot less
     // the Energy Orb: more shove, less drag, a looser and livelier slide, a hop on the handbrake (NOS turns it electric)
     const orb = this.form === 'orb', oPow = orb ? 1.3 : 1, oAcc = orb ? 1.35 : 1, oDrag = orb ? 0.75 : 1, oLat = orb ? 0.86 : 1;
     const grip = P.grip * S.grip * (typeof Atmos !== 'undefined' && this.pos.y < 150 ? Atmos.grip : 1) * (0.7 + 0.3 * gk); // rain makes everything slicker; low gravity, less grip
@@ -7202,7 +7277,7 @@ class Vehicle {
     const dk = deckAt(this.pos.x, this.pos.z, this.pos.y);
     let gY = dk && (dk.y > gT || underDeck(dk, this.pos.y)) ? dk.y : gT; this.onDeck = dk && gY === dk.y && gY !== gT ? dk.deck : null;
     this.onWater = false;
-    if (orb && !this.onDeck) { const Lk = W.lake, wY = (Math.hypot(this.pos.x - Lk.x, this.pos.z - Lk.z) < Lk.r + 18) ? Lk.level : W.sea; if (wY > gY) { gY = wY; this.onWater = true; this.onMoon = false; } } // the orb skims across water
+    if (orb && !this.onDeck && !this.bubble) { const Lk = W.lake, wY = (Math.hypot(this.pos.x - Lk.x, this.pos.z - Lk.z) < Lk.r + 18) ? Lk.level : W.sea; if (wY > gY) { gY = wY; this.onWater = true; this.onMoon = false; } } // the orb skims across water
     if (this.onDeck) { this.deckI = dk.i; this.deckT = dk.t; this.onMoon = false; }
     if (this.onGround) this.hopAir = false;
     this.vy -= 9.81 * 1.6 * dt * gk * (orb ? (this.hopAir ? 2.2 : 0.8) : 1); // a quick, snappy hop; otherwise the orb floats a little
@@ -7224,8 +7299,9 @@ class Vehicle {
     const L = W.lake;
     const waterY = (Math.hypot(this.pos.x - L.x, this.pos.z - L.z) < L.r + 18) ? L.level : W.sea;
     const depth = waterY - this.pos.y;
-    if (depth > 0.05) { this.surface = 'water'; this.inWater += dt; if (depth > 0.4) { this.vx *= Math.pow(0.25, dt); this.vz *= Math.pow(0.25, dt); } }
-    else this.inWater = 0;
+    this.dry = depth > 0.05 && (this.bubble || Atlantis.dryAt(this)); // Atlantis: in an air bubble, a glass tube or the Great Dome
+    if (depth > 0.05 && !this.dry) { this.surface = 'water'; this.inWater += dt; if (depth > 0.4) { this.vx *= Math.pow(0.25, dt); this.vz *= Math.pow(0.25, dt); } }
+    else { this.inWater = 0; if (this.bubble) { const k = Math.pow(0.82, dt); this.vx *= k; this.vz *= k; } } // (a bubble drags a little in the water)
     this.speed = Math.hypot(this.vx, this.vz);
     // collisions
     this.collide();
@@ -7407,6 +7483,646 @@ class SkidMarks {
   }
   lift(key) { this.last.delete(key); }
 }
+
+// ============================================================
+//  Atlantis (v13.4): a sunken city of ruins and crystal machines in a deep basin off the east coast.
+//  - The Dive Ramp plunges off the Coast Highway under the waves. At the waterline a bubble gate wraps the car in an
+//    air bubble: down here you can drive anywhere on the seabed (a little floaty, a little draggy).
+//  - The Crystal Line, an air-filled glass tube round the city on pylons; the Grand Canal, a walled channel with a glass
+//    roof cut through the city terrace; the Great Dome, a glass dome of air round the plaza and the Crystal Spire,
+//    whose beam of light rises out of the sea (the landmark); the Skyward Tube climbs back up to the surface.
+//  - Ruins (temples, columns, statues, an amphitheatre, a fallen head), crystal pylons feeding beams to the spire,
+//    kelp, coral, fish schools, manta rays, jellyfish, light shafts, caustics, marine snow.
+//  - Underwater the light turns blue-green, the fog closes in with depth, sound goes muffled.
+//  Leaving a tube or the dome onto the seabed (an airlock) gives you a bubble too; come up out of the water and it pops.
+// ============================================================
+const ATL_CYAN = new THREE.Color(0x46e8ff);
+const Atlantis = {
+  k: 0, t: 0, depth: 0, gates: [], wasIn: false, inside: 0,
+  // is this car somewhere with air round it (a dry tube, the canal, the dome)?
+  dryAt(V) {
+    const p = V.pos;
+    if (p.y > 2 || Math.abs(p.x - ATL.x) > ATL.r + 420 || Math.abs(p.z - ATL.z) > ATL.r + 420) return false;
+    if (V.onDeck && V.onDeck.dry) return true;
+    const dx = p.x - ATL.x, dz = p.z - ATL.z, dy = p.y - ATL.floor;
+    return (dx * dx + dz * dz) / (ATL.dome * ATL.dome) + (dy * dy) / (ATL.domeH * ATL.domeH) < 0.97;
+  },
+  at(a, r) { return [ATL.x + Math.cos(a) * r, ATL.z + Math.sin(a) * r]; },
+  build(scene) {
+    const g = this.g = new THREE.Group(); g.name = 'atlantis'; scene.add(g);          // the city: only drawn when you're under water
+    const gt = this.gt = new THREE.Group(); gt.name = 'atlTubes'; scene.add(gt);      // tubes, gates: also seen from the surface
+    const rng = makeRng(4040);
+    this.decks = Decks.list.filter(d => d.atl);
+    this.free = (x, z, pad = 6) => {
+      const nr = World.roadIndex.nearest(x, z, 40); if (nr && nr.d < World.roads[nr.ri].halfW + pad) return false;
+      for (const d of this.decks) { let best = 1e9; for (let i = 0; i < d.samples.length; i += 2) { const q = d.samples[i], dd = (q.x - x) ** 2 + (q.z - z) ** 2; if (dd < best) best = dd; } if (Math.sqrt(best) < d.halfW + pad + 2) return false; }
+      return true;
+    };
+    this.glass = new THREE.MeshStandardMaterial({ color: 0xa8ecff, roughness: 0.04, metalness: 0.1, transparent: true, opacity: 0.16, envMapIntensity: 1.6, side: THREE.DoubleSide, depthWrite: false });
+    this.bronze = new THREE.MeshStandardMaterial({ color: 0xb08a4a, roughness: 0.4, metalness: 0.8, flatShading: true });
+    this.marble = new THREE.MeshLambertMaterial({ color: 0xe4ded0, flatShading: true });
+    this.marbleD = new THREE.MeshLambertMaterial({ color: 0xbdb5a3, flatShading: true });
+    this.crystalMat = new THREE.MeshStandardMaterial({ color: 0x7ff0ff, emissive: 0x2fd8ff, emissiveIntensity: 0.9, roughness: 0.15, metalness: 0.1, flatShading: true, transparent: true, opacity: 0.92 });
+    this.glowList = [];
+    this.buildDome(g, gt, rng);
+    this.buildSpire(g);
+    this.buildRuins(g, rng);
+    this.buildCrystals(g, rng);
+    this.buildLife(g, rng);
+    this.buildTubes(gt);
+    this.buildCanal(g);
+    this.buildRamp(gt);
+    bakeStatic([...g.children], g);
+    bakeStatic([...gt.children], gt);
+    g.userData.dynamic = gt.userData.dynamic = true;
+    this.buildGlows(g);
+    this.buildFish(g, rng);
+    this.buildRays(g, rng);
+    this.buildJellies(g, rng);
+    this.buildWater(scene, rng);
+    this.buildBeacon(scene);
+    this.bubbleGeo = new THREE.SphereGeometry(1, 28, 18);
+    this.bubbleMat = this.makeBubbleMat();
+    this.ready = true;
+  },
+  // ---------- the Great Dome: a shallow glass dome of air round the plaza, bronze ribs, three doorways ----------
+  buildDome(g, gt, rng) {
+    const R = ATL.dome, H = ATL.domeH, X = ATL.x, Z = ATL.z, Y = ATL.floor;
+    const doors = this.doors = [];
+    for (const id of ['grandcanal', 'skyward']) { const d = Decks.list.find(q => q.id === id); if (!d) continue; const p = d.samples.reduce((b, q) => Math.abs(Math.hypot(q.x - X, q.z - Z) - R) < Math.abs(Math.hypot(b.x - X, b.z - Z) - R) ? q : b, d.samples[0]); doors.push({ a: Math.atan2(p.z - Z, p.x - X), w: (d.halfW + 2.4) / R, h: 9.5, deck: true }); }
+    doors.push({ a: 2.7, w: 7.5 / R, h: 8, deck: false }); // a door onto the seabed (for cars in bubbles)
+    this.doorAt = (a) => doors.find(dd => Math.abs(wrapAngle(a - dd.a)) < dd.w);
+    // the glass: a lat-long shell with the doorways left open
+    const NA = 72, NE = 16, pos = [], idx = [];
+    for (let e = 0; e <= NE; e++) for (let a = 0; a <= NA; a++) { const th = a / NA * TAU, ph = e / NE * Math.PI / 2; pos.push(X + Math.cos(th) * Math.cos(ph) * R, Y + Math.sin(ph) * H, Z + Math.sin(th) * Math.cos(ph) * R); }
+    for (let e = 0; e < NE; e++) for (let a = 0; a < NA; a++) {
+      const th = (a + 0.5) / NA * TAU, y = Math.sin((e + 0.5) / NE * Math.PI / 2) * H, dr = this.doorAt(th);
+      if (dr && y < dr.h) continue;
+      const i0 = e * (NA + 1) + a, i1 = i0 + 1, i2 = i0 + NA + 1, i3 = i2 + 1; idx.push(i0, i2, i1, i1, i2, i3);
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+    const dome = new THREE.Mesh(geo, this.glass); dome.renderOrder = 2; dome.userData.dynamic = true; g.add(dome);
+    // bronze ribs: meridians and two rings
+    const ribs = [];
+    for (let k = 0; k < 16; k++) {
+      const th = k / 16 * TAU, dr = this.doorAt(th), pts = [];
+      for (let e = 0; e <= 20; e++) { const ph = e / 20 * Math.PI / 2, y = Math.sin(ph) * H; if (dr && y < dr.h + 0.5) continue; pts.push(new THREE.Vector3(X + Math.cos(th) * Math.cos(ph) * R * 1.003, Y + y, Z + Math.sin(th) * Math.cos(ph) * R * 1.003)); }
+      if (pts.length > 2) ribs.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 20, 0.32, 5, false));
+    }
+    for (const ph of [0.42, 0.95]) { const rr = Math.cos(ph) * R * 1.004, y = Y + Math.sin(ph) * H, pts = []; for (let a = 0; a <= 96; a++) { const th = a / 96 * TAU; pts.push(new THREE.Vector3(X + Math.cos(th) * rr, y, Z + Math.sin(th) * rr)); } ribs.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 96, 0.3, 5, true)); }
+    for (const r of ribs) g.add(new THREE.Mesh(r, this.bronze));
+    // a marble kerb round the foot of the glass (except at the doors) and colliders: the dome's wall is solid
+    for (let a = 0; a < 120; a++) {
+      const th = (a + 0.5) / 120 * TAU; if (this.doorAt(th)) continue;
+      const x = X + Math.cos(th) * R, z = Z + Math.sin(th) * R, len = TAU * R / 120;
+      const kb = new THREE.Mesh(new THREE.BoxGeometry(len + 0.1, 1.0, 1.4), this.marbleD); kb.position.set(x, Y + 0.3, z); kb.rotation.y = -th + Math.PI / 2; g.add(kb);
+      World.colliders.add({ type: 'circle', x, z, r: 1.3, y0: Y - 2, y1: Y + 7 });
+    }
+    // doorways: a glowing crystal arch round each, and an air-lock membrane across the seabed door
+    for (const dr of doors) {
+      const x = X + Math.cos(dr.a) * R, z = Z + Math.sin(dr.a) * R, span = dr.w * R;
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(span, 0.55, 8, 28, Math.PI), this.crystalMat); arch.scale.set(1, dr.h / span, 1);
+      arch.position.set(x, Y, z); arch.rotation.y = -dr.a + Math.PI / 2; g.add(arch);
+      this.glowList.push({ x, y: Y + dr.h * 0.7, z, s: span * 2.2, a: 0.3 });
+      if (!dr.deck) this.addGate(g, x, Y, z, -dr.a + Math.PI / 2, span, dr.h, false);
+    }
+    // inside: a ring of crystal obelisks round the spire
+    for (let k = 0; k < 8; k++) {
+      const th = k / 8 * TAU + 0.2; if (doors.some(dd => Math.abs(wrapAngle(th - dd.a)) < 0.45)) continue;
+      const x = X + Math.cos(th) * 11, z = Z + Math.sin(th) * 11;
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 0.8, 6), this.marbleD); base.position.set(x, Y + 0.4, z); g.add(base);
+      const ob = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.6, 4.2, 6), this.crystalMat); ob.position.set(x, Y + 2.9, z); g.add(ob);
+      World.colliders.add({ type: 'circle', x, z, r: 1.3, h: 4 });
+      this.glowList.push({ x, y: Y + 4.5, z, s: 6, a: 0.35 });
+    }
+  },
+  // ---------- the Crystal Spire: the city's heart, its beam rising out of the sea ----------
+  buildSpire(g) {
+    const X = ATL.x, Z = ATL.z, Y = ATL.floor;
+    for (const [r, h, y] of [[8, 0.8, 0.4], [6.5, 0.8, 1.2], [5, 0.8, 2.0]]) { const st = new THREE.Mesh(new THREE.CylinderGeometry(r, r + 0.3, h, 8), this.marble); st.position.set(X, Y + y, Z); g.add(st); }
+    World.colliders.add({ type: 'circle', x: X, z: Z, r: 7.6, h: 6 });
+    const parts = [[2.6, 3.6, 12, 2.4], [1.8, 2.6, 8, 14.4], [0.2, 1.8, 6, 22.4]];
+    for (const [r0, r1, h, y] of parts) { const c = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 6), this.crystalMat); c.position.set(X, Y + y + h / 2, Z); g.add(c); }
+    for (let k = 0; k < 6; k++) { const a = k / 6 * TAU, c = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.9, 5 + (k % 3) * 2, 5), this.crystalMat); c.position.set(X + Math.cos(a) * 3.4, Y + 4.8, Z + Math.sin(a) * 3.4); c.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35); g.add(c); }
+    // floating rings that turn slowly round the spire
+    this.rings = [];
+    for (const [r, y, s] of [[7, 17, 0.3], [10, 13, -0.22], [5, 23, 0.45]]) { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.35, 8, 48), this.bronze); m.position.set(X, Y + y, Z); m.userData.dynamic = true; m.userData.spin = s; g.add(m); this.rings.push(m); }
+    this.spireTop = { x: X, y: Y + 28.4, z: Z };
+    this.glowList.push({ x: X, y: Y + 22, z: Z, s: 34, a: 0.45 }, { x: X, y: Y + 8, z: Z, s: 26, a: 0.3 });
+  },
+  // ---------- bubble gates: a glowing arch with a shimmering membrane; drive through and the air wraps round you ----------
+  addGate(g, x, y, z, yaw, span, h, record = true) {
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(span, 0.6, 10, 32, Math.PI), this.crystalMat); arch.scale.set(1, h / span, 1); arch.position.set(x, y, z); arch.rotation.y = yaw; g.add(arch);
+    const mem = new THREE.Mesh(new THREE.CircleGeometry(1, 40, 0, Math.PI), this.gateMat || (this.gateMat = this.makeMembraneMat()));
+    mem.scale.set(span - 0.3, h - 0.3, 1); mem.position.set(x, y + 0.02, z); mem.rotation.y = yaw; mem.userData.dynamic = true; mem.renderOrder = 3; g.add(mem);
+    if (record) this.gates.push({ x, y, z, nx: Math.sin(yaw), nz: Math.cos(yaw), r: span, h });
+    this.glowList.push({ x, y: y + h * 0.6, z, s: span * 2.4, a: 0.3 });
+  },
+  makeMembraneMat() {
+    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uT: { value: 0 } },
+      vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform float uT; varying vec2 vP;
+        void main(){ float r = length(vP); float w = sin(r * 18.0 - uT * 3.0) * 0.5 + 0.5; float edge = smoothstep(0.75, 1.0, r);
+          vec3 c = mix(vec3(0.55, 0.95, 1.0), vec3(1.0, 0.75, 1.0), 0.5 + 0.5 * sin(vP.x * 5.0 + uT)); float a = 0.10 + 0.12 * w + 0.45 * edge;
+          gl_FragColor = vec4(c, a);
+          #include <colorspace_fragment>
+        }` });
+    return m;
+  },
+  makeBubbleMat() {
+    return new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uA: { value: 1 } },
+      vertexShader: `uniform float uT; varying vec3 vN; varying vec3 vV;
+        void main(){ vec3 p = position * (1.0 + 0.03 * sin(uT * 3.1 + position.x * 2.3 + position.y * 3.7) + 0.02 * sin(uT * 4.3 + position.z * 2.9));
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform float uT; uniform float uA; varying vec3 vN; varying vec3 vV;
+        void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.0);
+          vec3 irid = 0.5 + 0.5 * cos(6.2831 * (f * 1.4 + vec3(0.0, 0.33, 0.67)) + uT * 0.7);
+          vec3 c = mix(vec3(0.8, 0.97, 1.0), irid, 0.5); float spec = pow(max(0.0, dot(normalize(vN), normalize(vec3(-0.4, 0.8, 0.45)))), 40.0);
+          gl_FragColor = vec4(c + spec, (0.05 + 0.7 * f + spec * 0.8) * uA);
+          #include <colorspace_fragment>
+        }` });
+  },
+
+  // ---------- ruins: the processional way, temples, a round temple, an amphitheatre, colonnades, a fallen head ----------
+  buildRuins(g, rng) {
+    const cols = [], fallen = [], stat = [];
+    const col = (x, z, h, broken) => { const y = groundHeight(x, z); cols.push({ x, y, z, h, broken: broken || false, tilt: broken ? (rng() - 0.5) * 0.12 : 0 }); World.colliders.add({ type: 'circle', x, z, r: 1.0, h: Math.min(h, 6) }); };
+    const box = (w, h, d, x, y, z, yaw, mat = this.marble) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.y = yaw || 0; m.castShadow = true; g.add(m); return m; };
+    // the processional way: columns and statues lining the Abyss Road into the city
+    const A = World.roads.find(r => r.id === 'abyss');
+    if (A) A.samples.forEach((p, i) => {
+      if (i % 5) return;
+      for (const sg of [-1, 1]) { const lat = sg * (A.halfW + 4.5), x = p.x - p.tz * lat, z = p.z + p.tx * lat; if ((i / 5) % 3 === 1) stat.push({ x, z, yaw: Math.atan2(p.tz * sg, -p.tx * sg), s: 1 }); else col(x, z, 7 + rng() * 2, rng() < 0.3); }
+    });
+    // Temple of the Tides (south): a stepped platform and a peristyle of columns, part of its roof still on
+    const tA = 1.9, [tx, tz] = this.at(tA, 112), tyaw = tA + Math.PI / 2, ty = groundHeight(tx, tz), cs = Math.cos(tyaw), sn = Math.sin(tyaw);
+    const loc = (lx, lz) => [tx + lx * cs + lz * sn, tz - lx * sn + lz * cs];
+    for (const [w, d, y] of [[36, 24, 0.5], [33, 21, 1.5], [30, 18, 2.5]]) box(w, 1, d, tx, ty + y, tz, tyaw, y < 1 ? this.marbleD : this.marble);
+    this.templeTop = ty + 3;
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 5; j++) {
+      if (i > 0 && i < 7 && j > 0 && j < 4) continue;
+      const [x, z] = loc(-13.5 + i * (27 / 7), -7.5 + j * (15 / 4)); const broken = rng() < 0.3;
+      cols.push({ x, y: this.templeTop, z, h: broken ? 3 + rng() * 4 : 9, broken, tilt: 0 });
+    }
+    for (const lz of [-7.5, 7.5]) { const [x, z] = loc(-5, lz); box(19, 1.2, 1.6, x, this.templeTop + 9.8, z, tyaw); } // architrave on the unbroken side
+    { const [x, z] = loc(-13.5, 0); const ped = new THREE.Mesh(new THREE.ConeGeometry(9, 3.4, 3, 1), this.marble); ped.scale.set(1, 1, 0.12); ped.position.set(x, this.templeTop + 12.1, z); ped.rotation.y = tyaw + Math.PI / 2; g.add(ped); }
+    World.colliders.add({ type: 'box', x: tx, z: tz, hx: 18, hz: 12, rot: -tyaw, h: 4 });
+    this.temple = { x: tx, z: tz };
+    // a round temple (north-east, inside the Crystal Line): a ring of columns under a dome
+    { const [x0, z0] = this.at(-0.6, 86), y0 = groundHeight(x0, z0);
+      const plat = new THREE.Mesh(new THREE.CylinderGeometry(9.5, 10.5, 1.4, 20), this.marbleD); plat.position.set(x0, y0 + 0.5, z0); g.add(plat);
+      for (let k = 0; k < 10; k++) { const a = k / 10 * TAU; cols.push({ x: x0 + Math.cos(a) * 8, y: y0 + 1.2, z: z0 + Math.sin(a) * 8, h: 7, broken: k === 3 || k === 7, tilt: 0 }); }
+      const dm = new THREE.Mesh(new THREE.SphereGeometry(9, 20, 8, 0, TAU, 0, Math.PI / 2), this.marble); dm.scale.y = 0.55; dm.position.set(x0, y0 + 9.4, z0); dm.rotation.z = 0.12; g.add(dm);
+      World.colliders.add({ type: 'circle', x: x0, z: z0, r: 9.5, h: 3 }); this.tholos = { x: x0, y: y0, z: z0 }; }
+    // the amphitheatre (south-west): curved tiers facing the city
+    { const [x0, z0] = this.at(2.45, 205), y0 = groundHeight(x0, z0), face = Math.atan2(ATL.z - z0, ATL.x - x0);
+      for (let t = 0; t < 7; t++) { const r = 14 + t * 2.6, seg = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1.1, 32, 1, false, 0, Math.PI), t % 2 ? this.marble : this.marbleD); seg.scale.y = 1; seg.position.set(x0, y0 + 0.55 + t * 1.05, z0); seg.rotation.y = -face - Math.PI / 2; g.add(seg); }
+      World.colliders.add({ type: 'circle', x: x0, z: z0, r: 30, h: 4 }); }
+    // a ruined double colonnade (north, outside the tube) and a grand arch (east)
+    { const [x0, z0] = this.at(-1.9, 205), dir = -1.9 + Math.PI / 2;
+      for (let k = 0; k < 9; k++) for (const sg of [-1, 1]) { const x = x0 + Math.cos(dir) * (k - 4) * 6 + Math.cos(dir + Math.PI / 2) * sg * 5, z = z0 + Math.sin(dir) * (k - 4) * 6 + Math.sin(dir + Math.PI / 2) * sg * 5; if (!this.free(x, z, 2)) continue; if (rng() < 0.35) fallen.push({ x, z, y: groundHeight(x, z) + 0.8, yaw: rng() * TAU, h: 6 + rng() * 3 }); else col(x, z, 8, rng() < 0.4); } }
+    { const [x0, z0] = this.at(0.25, 212), y0 = groundHeight(x0, z0), yaw = 0.25;
+      for (const sg of [-1, 1]) { const x = x0 + Math.sin(yaw) * sg * 8, z = z0 - Math.cos(yaw) * sg * 8; box(3, 14, 3, x, y0 + 7, z, -yaw); World.colliders.add({ type: 'circle', x, z, r: 2.2, h: 14 }); }
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(8, 1.5, 8, 24, Math.PI), this.marble); arch.position.set(x0, y0 + 14, z0); arch.rotation.y = -yaw + Math.PI / 2; g.add(arch);
+      this.glowList.push({ x: x0, y: y0 + 18, z: z0, s: 10, a: 0.25 }); }
+    // the fallen head of a colossal statue, half sunk in the sand
+    { const [x0, z0] = this.at(2.05, 178), y0 = groundHeight(x0, z0), H = new THREE.Group(); H.position.set(x0, y0 + 2, z0); H.rotation.set(0.3, 1.1, 1.25);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(6, 14, 10), this.marble); head.scale.set(0.85, 1.1, 0.95); H.add(head);
+      const helm = new THREE.Mesh(new THREE.SphereGeometry(6.4, 14, 8, 0, TAU, 0, Math.PI * 0.55), this.bronze); helm.position.y = 1; H.add(helm);
+      const crest = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4, 11), this.bronze); crest.position.set(0, 7.5, -0.5); H.add(crest);
+      const nose = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3, 2), this.marble); nose.position.set(0, -0.6, 5.6); nose.rotation.x = 0.2; H.add(nose);
+      for (const sx of [-1.9, 1.9]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 6), this.crystalMat); eye.position.set(sx, 1, 5); H.add(eye); }
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.6, 1), this.marbleD); lip.position.set(0, -3.4, 5.1); H.add(lip);
+      g.add(H); World.colliders.add({ type: 'circle', x: x0, z: z0, r: 6.5, h: 8 }); this.head = { x: x0, z: z0 };
+      this.glowList.push({ x: x0, y: y0 + 3, z: z0, s: 9, a: 0.25 }); }
+    // scattered stumps and fallen drums all over the city
+    for (let k = 0; k < 900 && cols.length < 260; k++) {
+      const a = rng() * TAU, r = 55 + Math.sqrt(rng()) * 200, [x, z] = this.at(a, r); if (!this.free(x, z, 4) || atlCanalDist(x, z) < 34) continue;
+      if (Math.hypot(x - this.temple.x, z - this.temple.z) < 26 || Math.hypot(x - this.head.x, z - this.head.z) < 12) continue;
+      if (rng() < 0.45) fallen.push({ x, z, y: groundHeight(x, z) + 0.7, yaw: rng() * TAU, h: 3 + rng() * 5 }); else col(x, z, 1 + rng() * 4, true);
+    }
+    // columns: one instanced shaft (fluted), with a base and (unless broken) a capital
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3(), c = new THREE.Color();
+    const shaft = new THREE.CylinderGeometry(0.75, 0.85, 1, 14); shaft.translate(0, 0.5, 0);
+    const sm = new THREE.InstancedMesh(shaft, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), cols.length + fallen.length);
+    const bm = new THREE.InstancedMesh(new THREE.BoxGeometry(2, 0.5, 2), this.marbleD, cols.length);
+    const capped = cols.filter(cc => !cc.broken), cm = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.6, 2.2), this.marble, Math.max(1, capped.length));
+    cols.forEach((cc, k) => {
+      e.set(cc.tilt, rng() * TAU, cc.tilt * 0.7); q.setFromEuler(e); sc.set(1, cc.h, 1); v.set(cc.x, cc.y + 0.4, cc.z); m4.compose(v, q, sc); sm.setMatrixAt(k, m4);
+      c.setRGB(0.9, 0.88, 0.82).lerp(new THREE.Color(0.55, 0.72, 0.55), rng() * 0.45); sm.setColorAt(k, c);
+      q.identity(); sc.set(1, 1, 1); v.set(cc.x, cc.y + 0.25, cc.z); m4.compose(v, q, sc); bm.setMatrixAt(k, m4);
+    });
+    capped.forEach((cc, k) => { v.set(cc.x, cc.y + 0.4 + cc.h + 0.3, cc.z); m4.compose(v, q.identity(), sc.set(1, 1, 1)); cm.setMatrixAt(k, m4); });
+    fallen.forEach((f, k) => { e.set(Math.PI / 2, f.yaw, 0, 'YXZ'); q.setFromEuler(e); sc.set(1, f.h, 1); v.set(f.x, f.y, f.z); m4.compose(v, q, sc); sm.setMatrixAt(cols.length + k, m4); c.setRGB(0.8, 0.8, 0.74).lerp(new THREE.Color(0.5, 0.7, 0.5), rng() * 0.5); sm.setColorAt(cols.length + k, c); });
+    for (const im of [sm, bm, cm]) { im.computeBoundingSphere(); im.castShadow = true; g.add(im); }
+    // statues: a robed figure on a plinth, one arm raised, holding a crystal
+    if (stat.length) {
+      const parts = [], P = (geo, col, x, y, z, rx = 0, rz = 0) => { geo.rotateX(rx); geo.rotateZ(rz); geo.translate(x, y, z); parts.push(colorizeGeo(geo, col)); };
+      P(new THREE.BoxGeometry(2.4, 1.6, 2.4), 0xbdb5a3, 0, 0.8, 0); P(new THREE.CylinderGeometry(0.75, 1.15, 4.4, 8), 0xe4ded0, 0, 3.8, 0); P(new THREE.SphereGeometry(0.62, 10, 8), 0xe4ded0, 0, 6.5, 0);
+      P(new THREE.CylinderGeometry(0.22, 0.26, 2.6, 6), 0xe4ded0, 0.95, 6.2, 0, 0, -0.35); P(new THREE.OctahedronGeometry(0.55, 0), 0x6ff2ff, 1.45, 7.7, 0);
+      const geo = mergeGeos(parts), im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), stat.length);
+      stat.forEach((st, k) => { const y = groundHeight(st.x, st.z); e.set(0, st.yaw, 0); q.setFromEuler(e); v.set(st.x, y, st.z); m4.compose(v, q, sc.set(1.3, 1.3, 1.3)); im.setMatrixAt(k, m4); World.colliders.add({ type: 'circle', x: st.x, z: st.z, r: 1.6, h: 8 }); this.glowList.push({ x: st.x, y: y + 10, z: st.z, s: 4, a: 0.4 }); });
+      im.computeBoundingSphere(); im.castShadow = true; g.add(im);
+    }
+  },
+  // ---------- crystal tech: six crystal pylons round the dome feeding beams to the spire, crystal clusters, lamps ----------
+  buildCrystals(g, rng) {
+    this.pylons = [];
+    const clusters = [];
+    for (const a of [-2.4, -1.4, -0.4, 0.4, 1.6, 2.35]) {
+      const [x, z] = this.at(a, 72); if (!this.free(x, z, 3)) continue;
+      const y = groundHeight(x, z);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4, 3, 6), this.marbleD); base.position.set(x, y + 1.5, z); g.add(base);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.3, 6, 24), this.bronze); ring.rotation.x = Math.PI / 2; ring.position.set(x, y + 3.1, z); g.add(ring);
+      const h = 16 + rng() * 5; clusters.push([x, y + 3, z, 1.6, h, 0, 0]);
+      for (let k = 0; k < 4; k++) { const aa = rng() * TAU; clusters.push([x + Math.cos(aa) * 1.6, y + 3, z + Math.sin(aa) * 1.6, 0.8, h * (0.3 + rng() * 0.3), Math.cos(aa) * 0.4, Math.sin(aa) * 0.4]); }
+      World.colliders.add({ type: 'circle', x, z, r: 4, h: 20 });
+      this.pylons.push({ x, y: y + 3 + h, z });
+      this.glowList.push({ x, y: y + 3 + h * 0.7, z, s: 14, a: 0.4 }, { x, y: y + 3, z, s: 10, a: 0.3 });
+    }
+    // crystal clusters growing out of the seabed and the ruins
+    for (let k = 0; k < 700 && clusters.length < 170; k++) {
+      const a = rng() * TAU, r = 40 + Math.sqrt(rng()) * 240, [x, z] = this.at(a, r); if (!this.free(x, z, 3) || atlCanalDist(x, z) < 30) continue;
+      const y = groundHeight(x, z), n = 2 + Math.floor(rng() * 4);
+      for (let i = 0; i < n; i++) { const aa = rng() * TAU, tilt = 0.2 + rng() * 0.5; clusters.push([x + Math.cos(aa) * 0.6, y - 0.2, z + Math.sin(aa) * 0.6, 0.25 + rng() * 0.45, 1.2 + rng() * 3.2, Math.cos(aa) * tilt, Math.sin(aa) * tilt]); }
+      if (rng() < 0.25) this.glowList.push({ x, y: y + 2, z, s: 5, a: 0.3 });
+    }
+    // on the temple
+    for (let k = 0; k < 5; k++) { const [x, z] = [this.temple.x + (rng() - 0.5) * 20, this.temple.z + (rng() - 0.5) * 10]; clusters.push([x, this.templeTop, z, 0.5 + rng() * 0.4, 2 + rng() * 3, (rng() - 0.5) * 0.6, (rng() - 0.5) * 0.6]); }
+    const geo = new THREE.CylinderGeometry(0.25, 1, 1, 6); geo.translate(0, 0.5, 0);
+    const tip = new THREE.ConeGeometry(1, 0.6, 6); tip.translate(0, 1.3, 0);
+    const cg = mergeGeos([geo, tip]);
+    const im = new THREE.InstancedMesh(cg, this.crystalMat, clusters.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    clusters.forEach(([x, y, z, r, h, tx, tz], k) => { e.set(tz, 0, -tx); q.setFromEuler(e); sc.set(r, h / 1.3, r); v.set(x, y, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+    im.computeBoundingSphere(); g.add(im);
+    // energy beams from the pylons to the top of the spire
+    this.beamMat = new THREE.MeshBasicMaterial({ color: 0x6ff6ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (const p of this.pylons) {
+      const a = new THREE.Vector3(p.x, p.y, p.z), b = new THREE.Vector3(this.spireTop.x, this.spireTop.y - 6, this.spireTop.z), L = a.distanceTo(b);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, L, 6, 1, true), this.beamMat); m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); m.userData.dynamic = true; g.add(m);
+    }
+    // crystal lamps along the Abyss Road and round the plaza
+    const lamps = [];
+    const A = World.roads.find(r => r.id === 'abyss'); if (A) A.samples.forEach((p, i) => { if (i % 5 !== 2) return; for (const sg of [-1, 1]) lamps.push([p.x - p.tz * sg * (A.halfW + 1.2), p.y, p.z + p.tx * sg * (A.halfW + 1.2)]); });
+    for (let k = 0; k < 24; k++) { const a = k / 24 * TAU, [x, z] = this.at(a, ATL.dome + 9); if (this.free(x, z, 2) && !this.doorAt(a)) lamps.push([x, groundHeight(x, z), z]); }
+    const post = new THREE.CylinderGeometry(0.12, 0.18, 3.2, 6); post.translate(0, 1.6, 0); const ctop = new THREE.OctahedronGeometry(0.45, 0); ctop.translate(0, 3.6, 0);
+    const pm = new THREE.InstancedMesh(post, this.bronze, lamps.length), tm = new THREE.InstancedMesh(ctop, this.crystalMat, lamps.length);
+    lamps.forEach(([x, y, z], k) => { m4.makeTranslation(x, y, z); pm.setMatrixAt(k, m4); tm.setMatrixAt(k, m4); this.glowList.push({ x, y: y + 3.6, z, s: 4.5, a: 0.4 }); });
+    for (const m of [pm, tm]) { m.computeBoundingSphere(); g.add(m); }
+  },
+  // ---------- sea life that stays put: kelp forests, coral, glowing anemones, rocks ----------
+  buildLife(g, rng) {
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3(), c = new THREE.Color();
+    const spot = (n, tries, rMin, rMax, ok) => { const out = []; for (let k = 0; k < tries && out.length < n; k++) { const a = rng() * TAU, r = rMin + Math.sqrt(rng()) * (rMax - rMin), [x, z] = this.at(a, r); if (ok(x, z, a, r)) out.push([x, groundHeight(x, z), z, a, r]); } return out; };
+    const clear = (x, z, pad) => this.free(x, z, pad) && atlCanalDist(x, z) > 34 && Math.hypot(x - this.temple.x, z - this.temple.z) > 24 && Math.hypot(x - this.head.x, z - this.head.z) > 10 && Math.hypot(x - this.tholos.x, z - this.tholos.z) > 13;
+    // kelp: tall ribbons that sway (in forests, mostly out towards the rim)
+    { const geo = new THREE.PlaneGeometry(1.1, 1, 1, 8); geo.translate(0, 0.5, 0);
+      const forests = [[-2.6, 190], [1.2, 205], [-0.9, 200], [2.9, 150], [0.8, 240], [-1.6, 250]], list = [];
+      for (const [fa, fr] of forests) { const [fx, fz] = this.at(fa, fr); for (let k = 0; k < 160 && list.length < forests.length * 55; k++) { const x = fx + (rng() - 0.5) * 70, z = fz + (rng() - 0.5) * 70; if (clear(x, z, 4)) list.push([x, groundHeight(x, z), z]); } }
+      const mat = new THREE.MeshLambertMaterial({ color: 0x5d8a3a, side: THREE.DoubleSide, vertexColors: false });
+      mat.userData.t = { value: 0 };
+      mat.onBeforeCompile = (sh) => { sh.uniforms.uT = mat.userData.t; sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0); float hh = position.y * position.y; transformed.x += sin(uT * 0.9 + ip.x * 0.15 + position.y * 1.7) * 0.9 * hh; transformed.z += cos(uT * 0.7 + ip.z * 0.13) * 0.6 * hh;`); };
+      mat.customProgramCacheKey = () => 'kelp';
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach(([x, y, z], k) => { e.set(0, rng() * TAU, 0); q.setFromEuler(e); sc.set(0.8 + rng() * 0.8, 6 + rng() * 12, 1); v.set(x, y - 0.3, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); c.setRGB(0.7 + rng() * 0.3, 0.8 + rng() * 0.2, 0.5 + rng() * 0.3); im.setColorAt(k, c); });
+      im.computeBoundingSphere(); im.frustumCulled = false; g.add(im); this.kelpMat = mat; }
+    // coral: branching clumps and brain-coral domes in reef colours
+    { const parts = []; const P = (geo, x, y, z, rx, rz) => { geo.rotateX(rx || 0); geo.rotateZ(rz || 0); geo.translate(x, y, z); parts.push(geo); };
+      for (let k = 0; k < 6; k++) { const a = k / 6 * TAU; P(new THREE.CylinderGeometry(0.06, 0.16, 1.4, 5), Math.cos(a) * 0.3, 0.6, Math.sin(a) * 0.3, Math.sin(a) * 0.5, -Math.cos(a) * 0.5); P(new THREE.SphereGeometry(0.14, 5, 4), Math.cos(a) * 0.62, 1.25, Math.sin(a) * 0.62); }
+      const branch = mergeGeos(parts), dome = new THREE.SphereGeometry(0.8, 9, 6, 0, TAU, 0, Math.PI / 2);
+      const pal = [0xff6f91, 0xffa94d, 0xb07cff, 0xffd84d, 0x4de1c1, 0xff5e5e];
+      for (const [geo, n, s0, s1] of [[branch, 260, 0.9, 2.4], [dome, 160, 0.8, 2.2]]) {
+        const list = spot(n, n * 6, 40, 280, (x, z) => clear(x, z, 3));
+        const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), list.length);
+        list.forEach(([x, y, z], k) => { e.set(0, rng() * TAU, 0); q.setFromEuler(e); const s = s0 + rng() * (s1 - s0); sc.set(s, s * (0.7 + rng() * 0.6), s); v.set(x, y - 0.1, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); c.set(pal[Math.floor(rng() * pal.length)]); im.setColorAt(k, c); });
+        im.computeBoundingSphere(); g.add(im);
+      } }
+    // glowing anemones
+    { const list = spot(120, 900, 30, 270, (x, z) => clear(x, z, 3));
+      const geo = new THREE.SphereGeometry(0.4, 7, 5), im = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff }), list.length);
+      const pal = [0xff7ad9, 0x7affd4, 0xffe27a, 0x9d8bff];
+      list.forEach(([x, y, z], k) => { const s = 0.6 + rng() * 0.9; m4.makeScale(s, s * 0.7, s).setPosition(x, y + 0.1, z); im.setMatrixAt(k, m4); c.set(pal[k % 4]); im.setColorAt(k, c); if (k % 6 === 0) this.glowList.push({ x, y: y + 0.8, z, s: 3, a: 0.35 }); });
+      im.computeBoundingSphere(); g.add(im); }
+    // rocks
+    { const list = spot(110, 900, 60, 300, (x, z) => clear(x, z, 5));
+      const im = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x6b7774, flatShading: true }), list.length);
+      list.forEach(([x, y, z], k) => { e.set(rng(), rng() * 3, rng()); q.setFromEuler(e); const s = 1 + rng() * 3.2; sc.set(s, s * 0.7, s); v.set(x, y, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); World.colliders.add({ type: 'circle', x, z, r: s * 0.8, h: s }); });
+      im.computeBoundingSphere(); im.castShadow = true; g.add(im); }
+  },
+
+  // ---------- glass over the Crystal Line and the Skyward Tube: a clear arch, bronze ribs, light strips, airlocks ----------
+  buildTubes(gt) {
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+    for (const d of this.decks.filter(d => d.glass)) {
+      const S = d.samples, R = d.halfW + 0.9, Hh = 6.6, K = 14, pos = [], idx = [];
+      S.forEach((p, i) => {
+        for (let k = 0; k <= K; k++) { const ph = k / K * Math.PI, L = -R * Math.cos(ph), Y = 0.15 + Hh * Math.sin(ph) + (p.bk || 0) * L; pos.push(p.x - p.tz * L, p.y + Y, p.z + p.tx * L); }
+        if (i) { const a = (i - 1) * (K + 1); for (let k = 0; k < K; k++) idx.push(a + k, a + K + 1 + k, a + k + 1, a + k + 1, a + K + 1 + k, a + K + 2 + k); }
+      });
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      const glass = new THREE.Mesh(geo, this.glass); glass.renderOrder = 2; glass.userData.dynamic = true; gt.add(glass);
+      // ribs (one half-ellipse hoop, instanced every ~9 m), a light strip along the crown, glowing studs down the floor edges
+      const hoop = []; for (let k = 0; k <= 20; k++) { const ph = k / 20 * Math.PI; hoop.push(new THREE.Vector3(-R * 1.01 * Math.cos(ph), 0.15 + Hh * 1.01 * Math.sin(ph), 0)); }
+      const rg = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hoop), 24, 0.2, 5, false);
+      const ribs = S.filter((p, i) => i % 4 === 0), rm = new THREE.InstancedMesh(rg, this.bronze, ribs.length);
+      ribs.forEach((p, k) => { e.set(0, Math.atan2(p.tx, p.tz), 0); q.setFromEuler(e); v.set(p.x, p.y, p.z); m4.compose(v, q, sc); rm.setMatrixAt(k, m4); });
+      rm.computeBoundingSphere(); gt.add(rm);
+      const lights = [], studs = [];
+      S.forEach((p, i) => { if (i % 2 === 1) lights.push([p.x, p.y + 0.15 + Hh - 0.15, p.z, Math.atan2(p.tx, p.tz)]); if (i % 3 === 0) for (const sg of [-1, 1]) studs.push([p.x - p.tz * sg * (d.halfW - 0.3), p.y + 0.06, p.z + p.tx * sg * (d.halfW - 0.3), 0]); });
+      for (const [list, geo2, col] of [[lights, new THREE.BoxGeometry(0.5, 0.1, 2.2), 0xaaf8ff], [studs, new THREE.BoxGeometry(0.22, 0.08, 0.22), 0x5ff0ff]]) {
+        const im = new THREE.InstancedMesh(geo2, new THREE.MeshBasicMaterial({ color: col }), list.length);
+        list.forEach(([x, y, z, yaw], k) => { e.set(0, yaw, 0); q.setFromEuler(e); v.set(x, y, z); m4.compose(v, q, sc); im.setMatrixAt(k, m4); });
+        im.computeBoundingSphere(); gt.add(im);
+      }
+      // walls: nobody drives out through the glass
+      for (const sg of [-1, 1]) for (let i = 0; i < S.length - 2; i += 2) {
+        const p = S[i], q2 = S[i + 2], hw = d.halfW + 0.1, ox = -p.tz * sg * hw, oz = p.tx * sg * hw, dx = q2.x - p.x, dz = q2.z - p.z, len = Math.hypot(dx, dz);
+        World.colliders.add({ type: 'box', x: (p.x + q2.x) / 2 + ox, z: (p.z + q2.z) / 2 + oz, hx: len / 2 + 0.15, hz: 0.3, rot: Math.atan2(-dz, dx), y0: Math.min(p.y, q2.y) - 0.6, y1: Math.max(p.y, q2.y) + Hh });
+      }
+      // portals at the open ends: a heavy bronze collar; the Crystal Line's seabed end is an airlock
+      for (const end of [0, S.length - 1]) {
+        const p = S[end], inDome = Math.hypot(p.x - ATL.x, p.z - ATL.z) < ATL.dome; if (inDome) continue;
+        const col = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 8, 28, Math.PI), this.bronze); col.scale.set(R + 0.35, Hh + 0.35, R + 0.35); col.position.set(p.x, p.y + 0.15, p.z); col.rotation.y = Math.atan2(p.tx, p.tz); gt.add(col);
+        if (d.id === 'crystalline' && end === 0) { const q3 = S[3]; this.addGate(gt, q3.x, q3.y, q3.z, Math.atan2(q3.tx, q3.tz), R - 0.2, Hh - 0.2, false); }
+      }
+    }
+  },
+  // ---------- the Grand Canal: stone walls up to the city terrace, pilasters with crystal lamps, a glass roof ----------
+  buildCanal(g) {
+    const d = this.decks.find(q => q.canal); if (!d) return;
+    const S = d.samples, Ltot = S[S.length - 1].s, hw = d.halfW + 0.7, top = -29.3, wall = [], roof = [], pil = [];
+    const inWalls = (p) => p.s >= Ltot * 0.24 && Math.hypot(p.x - ATL.x, p.z - ATL.z) > ATL.dome + 1;
+    const i0 = S.findIndex(inWalls), i1 = S.length - 1 - [...S].reverse().findIndex(inWalls);
+    this.canalRange = [i0, i1];
+    for (const sg of [-1, 1]) {
+      const pos = [], idx = [];
+      for (let i = i0; i <= i1; i++) { const p = S[i], ox = -p.tz * sg, oz = p.tx * sg; pos.push(p.x + ox * hw, p.y - 0.6, p.z + oz * hw, p.x + ox * hw, top, p.z + oz * hw, p.x + ox * (hw + 1.6), top, p.z + oz * (hw + 1.6)); if (i > i0) { const a = (i - 1 - i0) * 3; idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); } }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0xcfc7b6, flatShading: true, side: THREE.DoubleSide })));
+      for (let i = i0; i < i1; i += 2) { const p = S[i], q2 = S[Math.min(i + 2, i1)], dx = q2.x - p.x, dz = q2.z - p.z, len = Math.hypot(dx, dz); if (len < 0.5) continue; World.colliders.add({ type: 'box', x: (p.x + q2.x) / 2 - p.tz * sg * (hw + 0.2), z: (p.z + q2.z) / 2 + p.tx * sg * (hw + 0.2), hx: len / 2 + 0.15, hz: 0.45, rot: Math.atan2(-dz, dx), y0: p.y - 1, y1: top + 2 }); }
+      for (let i = i0 + 2; i < i1; i += 4) { const p = S[i]; pil.push([p.x - p.tz * sg * (hw - 0.35), p.y, p.z + p.tx * sg * (hw - 0.35), Math.atan2(p.tx, p.tz)]); }
+    }
+    // glass roof (a low arch from wall top to wall top) with bronze ribs
+    { const pos = [], idx = [], K = 10;
+      for (let i = i0; i <= i1; i++) { const p = S[i]; for (let k = 0; k <= K; k++) { const ph = k / K * Math.PI, L = -hw * Math.cos(ph), Y = top + 0.1 + 2.4 * Math.sin(ph); pos.push(p.x - p.tz * L, Y, p.z + p.tx * L); } if (i > i0) { const a = (i - 1 - i0) * (K + 1); for (let k = 0; k < K; k++) idx.push(a + k, a + K + 1 + k, a + k + 1, a + k + 1, a + K + 1 + k, a + K + 2 + k); } }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      const gl = new THREE.Mesh(geo, this.glass); gl.renderOrder = 2; gl.userData.dynamic = true; g.add(gl);
+      for (let i = i0; i <= i1; i += 4) { const p = S[i], beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 1, 0.35, 0.4), this.bronze); beam.position.set(p.x, top + 0.3, p.z); beam.rotation.y = Math.atan2(p.tx, p.tz); g.add(beam); }
+    }
+    // pilasters with crystal lamps
+    const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(1.3, 1, 0.9), this.marble, pil.length), lm = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.5, 0), this.crystalMat, pil.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    pil.forEach(([x, y, z, yaw], k) => { e.set(0, yaw, 0); q.setFromEuler(e); const h = top - y + 0.4; sc.set(1, h, 1); v.set(x, y + h / 2 - 0.4, z); m4.compose(v, q, sc); pm.setMatrixAt(k, m4); sc.set(1, 1.6, 1); v.set(x, y + 5.2, z); m4.compose(v, q, sc); lm.setMatrixAt(k, m4); this.glowList.push({ x, y: y + 5.2, z, s: 5, a: 0.45 }); });
+    for (const m of [pm, lm]) { m.computeBoundingSphere(); g.add(m); }
+  },
+  // ---------- the Dive Ramp: a big sign over the top, a bubble gate at the waterline, lights down to the seabed ----------
+  buildRamp(gt) {
+    const d = this.decks.find(q => q.id === 'diveramp'); if (!d) return;
+    const S = d.samples; let gi = S.findIndex(p => p.y < 0.6); if (gi < 0) gi = Math.floor(S.length / 2);
+    const p = S[gi]; this.addGate(gt, p.x, p.y, p.z, Math.atan2(p.tx, p.tz), d.halfW + 1.6, 8.5, true);
+    this.diveGate = p;
+    // the gantry over the top of the ramp
+    const q = S[Math.min(S.length - 1, 8)], yaw = Math.atan2(q.tx, q.tz), G = new THREE.Group(); G.position.set(q.x, q.y, q.z); G.rotation.y = yaw;
+    const steel = new THREE.MeshLambertMaterial({ color: 0x3b4a5a, flatShading: true });
+    for (const sg of [-1, 1]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7.2, 0.5), steel); post.position.set(sg * (d.halfW + 0.8), 3.6, 0); G.add(post); }
+    const tex = canvasTex(1024, 256, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#0b4d6b'); gr.addColorStop(1, '#06283d'); c.fillStyle = gr; c.fillRect(0, 0, w, h); c.strokeStyle = '#7ff0ff'; c.lineWidth = 8; c.strokeRect(10, 10, w - 20, h - 20);
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#bff8ff'; c.font = '900 120px Georgia, serif'; c.fillText('ATLANTIS', w / 2 - 60, h / 2 - 22); c.font = '700 46px Arial, sans-serif'; c.fillStyle = '#ffffff'; c.fillText('DIVE RAMP  •  BUBBLE GATE AHEAD', w / 2 - 60, h / 2 + 70);
+      c.font = '900 200px Arial'; c.fillStyle = '#7ff0ff'; c.fillText('↓', w - 110, h / 2 + 10); });
+    const sm = new THREE.MeshLambertMaterial({ map: tex, emissive: 0x2fb8d8, emissiveMap: tex, emissiveIntensity: 0.5 });
+    const board = new THREE.Mesh(new THREE.BoxGeometry(d.halfW * 2 + 1.5, 2.8, 0.3), [steel, steel, steel, steel, steel, sm]); board.position.set(0, 7.0, 0); G.add(board);
+    gt.add(G);
+    // cyan lights down the underwater part of the ramp
+    for (let i = gi; i < S.length; i += 6) for (const sg of [-1, 1]) this.glowList.push({ x: S[i].x - S[i].tz * sg * (d.halfW + 0.4), y: S[i].y + 1.4, z: S[i].z + S[i].tx * sg * (d.halfW + 0.4), s: 4, a: 0.45 });
+    // and a sign at the coast for the way back up
+    const k = Decks.list.find(q2 => q2.id === 'skyway');
+    if (k) { const e0 = k.samples[k.samples.length - 6]; const t2 = canvasTex(512, 160, (c, w, h) => { c.fillStyle = '#0b4d6b'; c.fillRect(0, 0, w, h); c.strokeStyle = '#7ff0ff'; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12); c.fillStyle = '#e8fbff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '700 44px Arial'; c.fillText('SKYWAY CAUSEWAY', w / 2, h / 2 - 26); c.font = '700 32px Arial'; c.fillText('from Atlantis', w / 2, h / 2 + 30); });
+      const sb = new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 0.15), [steel, steel, steel, steel, new THREE.MeshLambertMaterial({ map: t2 }), steel]); const lat = k.halfW + 2.5; sb.position.set(e0.x + e0.tz * lat, e0.y + 2.6, e0.z - e0.tx * lat); sb.rotation.y = Math.atan2(-e0.tx, -e0.tz); gt.add(sb); }
+  },
+  buildGlows(g) {
+    const tex = softTex('rgba(150,250,255,0.9)', 'rgba(40,200,255,0)');
+    this.glows = billboardCloud(this.glowList.length, tex, { additive: true, fogMul: 1.0 });
+    const A = this.glows.userData.A;
+    this.glowList.forEach((q, i) => { A.pos.set([q.x, q.y, q.z], i * 3); A.size[i] = q.s; A.alpha[i] = q.a; A.col.set([0.55, 0.95, 1], i * 3); A.rot[i] = i * 1.3; });
+    this.glows.flush(); g.add(this.glows);
+  },
+
+  // ---------- fish: schools that swim slow loops round the city ----------
+  buildFish(g, rng) {
+    const body = new THREE.SphereGeometry(0.5, 8, 6); body.scale(0.32, 0.55, 1);
+    const tail = new THREE.ConeGeometry(0.32, 0.55, 4); tail.rotateX(-Math.PI / 2); tail.scale(0.25, 1, 1); tail.translate(0, 0, -0.68);
+    const fin = new THREE.ConeGeometry(0.15, 0.4, 3); fin.translate(0, 0.38, 0.05);
+    const geo = mergeGeos([body, tail, fin]);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }); mat.userData.t = { value: 0 };
+    mat.onBeforeCompile = (sh) => { sh.uniforms.uT = mat.userData.t; sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0); float bend = max(0.0, -position.z); transformed.x += sin(uT * 11.0 + ip.x * 0.7 + ip.z * 0.4) * 0.22 * bend * bend;`); };
+    mat.customProgramCacheKey = () => 'fish';
+    this.fishMat = mat;
+    const pal = [0xffc93c, 0x5ad1ff, 0xff7b54, 0xb7f05a, 0xe6e6f0, 0xff6fb5];
+    const homes = [[0, 40, -14, 1.2], [this.temple.x, this.temple.z, -24, 1], [this.tholos.x, this.tholos.z, -26, 0.9], ...[[-2.6, 190], [1.2, 205], [-1.5, 140]].map(([a, r]) => [...this.at(a, r), -28, 1.1])];
+    this.schools = homes.map(([hx, hz, hy, sp], i) => ({ x: i === 0 ? ATL.x : hx, z: i === 0 ? ATL.z : hz, y: hy, r: i === 0 ? 40 : 18 + rng() * 14, sp: (0.08 + rng() * 0.08) * (rng() < 0.5 ? 1 : -1) * sp, ph: rng() * TAU, col: pal[i % pal.length] }));
+    const per = 30, n = this.schools.length * per;
+    this.fish = new THREE.InstancedMesh(geo, mat, n); this.fish.frustumCulled = false; this.fish.userData.dynamic = true;
+    this.fishOff = []; const c = new THREE.Color();
+    this.schools.forEach((sc, si) => { for (let k = 0; k < per; k++) { this.fishOff.push({ s: si, x: (rng() - 0.5) * 9, y: (rng() - 0.5) * 4, z: (rng() - 0.5) * 9, w: rng() * TAU, sz: 0.8 + rng() * 0.6 }); c.set(sc.col).lerp(new THREE.Color(0xffffff), rng() * 0.3); this.fish.setColorAt(si * per + k, c); } });
+    g.add(this.fish);
+  },
+  // ---------- manta rays gliding big circles ----------
+  buildRays(g, rng) {
+    const geo = new THREE.BufferGeometry(), pts = [0, 0, 2.2, 3.4, 0, -0.4, 0, 0.25, -0.2, 0, 0, 2.2, 0, 0.25, -0.2, -3.4, 0, -0.4, 0, 0.25, -0.2, 3.4, 0, -0.4, 0, 0, -1.4, -3.4, 0, -0.4, 0, 0.25, -0.2, 0, 0, -1.4, 0, 0, -1.4, 0.06, 0, -4.2, -0.06, 0, -4.2];
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); geo.computeVertexNormals();
+    const mat = new THREE.MeshLambertMaterial({ color: 0x2c3a48, side: THREE.DoubleSide, flatShading: true }); mat.userData.t = { value: 0 };
+    mat.onBeforeCompile = (sh) => { sh.uniforms.uT = mat.userData.t; sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0); transformed.y += sin(uT * 1.6 + ip.x * 0.05) * 0.55 * abs(position.x);`); };
+    mat.customProgramCacheKey = () => 'manta'; this.rayMat = mat;
+    this.rays = new THREE.InstancedMesh(geo, mat, 3); this.rays.frustumCulled = false; this.rays.userData.dynamic = true;
+    this.rayPath = [0, 1, 2].map(k => ({ r: 120 + k * 45, y: -18 - k * 3, sp: (0.035 + k * 0.01) * (k % 2 ? -1 : 1), ph: k * 2.1, s: 1.6 + k * 0.4 }));
+    g.add(this.rays);
+  },
+  // ---------- jellyfish: glowing bells that pulse and drift ----------
+  buildJellies(g, rng) {
+    const bell = new THREE.SphereGeometry(1, 12, 6, 0, TAU, 0, Math.PI * 0.55);
+    const tent = []; for (let k = 0; k < 6; k++) { const a = k / 6 * TAU, t = new THREE.CylinderGeometry(0.04, 0.02, 2.6, 3); t.translate(Math.cos(a) * 0.55, -1.2, Math.sin(a) * 0.55); tent.push(t); }
+    const geo = mergeGeos([bell.toNonIndexed(), ...tent.map(t => t.toNonIndexed())]);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const n = 28; this.jelly = new THREE.InstancedMesh(geo, mat, n); this.jelly.frustumCulled = false; this.jelly.userData.dynamic = true;
+    const pal = [0xff8ae0, 0x8ab4ff, 0x9dffe0, 0xd59bff], c = new THREE.Color();
+    this.jellies = [];
+    for (let k = 0; k < n; k++) { const a = rng() * TAU, r = ATL.dome + 8 + rng() * 160, [x, z] = this.at(a, r); this.jellies.push({ x, z, y: -30 + rng() * 22, ph: rng() * TAU, s: 0.7 + rng() * 0.9 }); c.set(pal[k % 4]); this.jelly.setColorAt(k, c); }
+    g.add(this.jelly);
+  },
+  // ---------- the water itself: the surface from below, caustics on the seabed, light shafts, marine snow ----------
+  buildWater(scene, rng) {
+    // a caustic network (cellular noise, tileable)
+    const S = 256, can = document.createElement('canvas'); can.width = can.height = S; const cx = can.getContext('2d'), im = cx.createImageData(S, S), P = [];
+    for (let i = 0; i < 18; i++) P.push([rng() * S, rng() * S]);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let f1 = 1e9, f2 = 1e9; for (const [px, py] of P) { let dx = Math.abs(x - px), dy = Math.abs(y - py); dx = Math.min(dx, S - dx); dy = Math.min(dy, S - dy); const d = dx * dx + dy * dy; if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d; }
+      const v = Math.max(0, 1 - (Math.sqrt(f2) - Math.sqrt(f1)) / 9), o = (y * S + x) * 4, b = Math.pow(v, 2.2) * 255; im.data[o] = b; im.data[o + 1] = b; im.data[o + 2] = b; im.data[o + 3] = 255;
+    }
+    cx.putImageData(im, 0, 0);
+    const caust = new THREE.CanvasTexture(can); caust.wrapS = caust.wrapT = THREE.RepeatWrapping;
+    this.caustTex = caust;
+    // surface seen from below: rippling light
+    const sm = new THREE.MeshBasicMaterial({ map: caust, color: 0x9fe8ff, transparent: true, opacity: 0.9, side: THREE.FrontSide });
+    caust.repeat.set(1, 1);
+    const surfTex = caust.clone(); surfTex.repeat.set(70, 70); surfTex.needsUpdate = true; sm.map = surfTex; this.surfTex = surfTex;
+    const surf = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), sm); surf.rotation.x = Math.PI / 2; surf.position.set(ATL.x - 250, -0.3, ATL.z); surf.renderOrder = 1; scene.add(surf); this.surface = surf;
+    const under = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshBasicMaterial({ color: 0x2c8fa6, side: THREE.FrontSide })); under.rotation.x = Math.PI / 2; under.position.set(ATL.x - 250, -0.12, ATL.z); scene.add(under); this.surfaceBack = under;
+    // caustics draped over the seabed
+    const N = 96, half = ATL.r + 80, pos = [], uv = [], idx = [];
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) { const x = ATL.x - half - 120 + (2 * half + 120) * i / N, z = ATL.z - half + 2 * half * j / N; pos.push(x, groundHeight(x, z) + 0.15, z); uv.push(x / 22, z / 22); }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const a = j * (N + 1) + i; idx.push(a, a + N + 1, a + 1, a + 1, a + N + 1, a + N + 2); }
+    const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cg.setIndex(idx);
+    this.caustMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, uT: { value: 0 }, uK: { value: 1 } }]),
+      vertexShader: `varying vec2 vUv; varying float vY; varying float vDepth; void main(){ vUv = uv; vY = position.y; vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform sampler2D map; uniform float uT; uniform float uK; uniform vec3 fogColor; uniform float fogNear; uniform float fogFar; varying vec2 vUv; varying float vY; varying float vDepth;
+        void main(){ float a = texture2D(map, vUv + vec2(uT * 0.021, uT * 0.013)).r; float b = texture2D(map, vUv * 1.37 + vec2(-uT * 0.017, uT * 0.019)).r;
+          float c = min(a, b) * 1.6; float f = smoothstep(fogNear, fogFar, vDepth); float shallow = mix(1.0, 0.45, smoothstep(-5.0, -40.0, vY));
+          gl_FragColor = vec4(vec3(0.75, 0.97, 1.0) * c * shallow * uK * (1.0 - f), 1.0);
+          #include <colorspace_fragment>
+        }` });
+    this.caustMat.uniforms.map.value = caust;
+    const cm = new THREE.Mesh(cg, this.caustMat); cm.frustumCulled = false; cm.renderOrder = 1; this.caust = cm; scene.add(cm);
+    // light shafts down from the surface
+    const gt = canvasTex(32, 256, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.25)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+    this.shaftMat = new THREE.MeshBasicMaterial({ map: gt, color: 0xc6f6ff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    this.shafts = new THREE.Group(); this.shafts.userData.dynamic = true;
+    for (let k = 0; k < 14; k++) { const a = rng() * TAU, r = 20 + rng() * 230, [x, z] = this.at(a, r), h = 40 + rng() * 10, m = new THREE.Mesh(new THREE.CylinderGeometry(2 + rng() * 2, 6 + rng() * 4, h, 10, 1, true), this.shaftMat); m.position.set(x, -h / 2 - 0.5, z); m.rotation.set(0.12, 0, 0.18); m.userData.ph = rng() * TAU; this.shafts.add(m); }
+    scene.add(this.shafts);
+    // marine snow round the camera
+    const n = this.snowN = 700, sp = new Float32Array(n * 3); this.snowOff = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { this.snowOff[i * 3] = rng() * 70; this.snowOff[i * 3 + 1] = rng() * 36; this.snowOff[i * 3 + 2] = rng() * 70; }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+    this.snow = new THREE.Points(sg, new THREE.PointsMaterial({ map: softTex('rgba(255,255,255,1)', 'rgba(255,255,255,0)'), size: 0.16, color: 0xdff8ff, transparent: true, opacity: 0.7, depthWrite: false }));
+    this.snow.frustumCulled = false; scene.add(this.snow);
+    this.waterParts = [surf, under, cm, this.shafts, this.snow];
+  },
+  // ---------- the beacon: the spire's beam of light rising out of the sea (a landmark from the coast) ----------
+  buildBeacon(scene) {
+    const gt = canvasTex(32, 256, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.75, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,1)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+    const top = this.spireTop, H = 170;
+    this.beamMat2 = new THREE.MeshBasicMaterial({ map: gt, color: 0x8ff4ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.2, H, 16, 1, true), this.beamMat2); b.position.set(top.x, top.y + H / 2, top.z); scene.add(b);
+    const b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.2, H, 12, 1, true), this.beamMat2); b2.position.copy(b.position); scene.add(b2);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(3, 14, 40), new THREE.MeshBasicMaterial({ map: softTex('rgba(200,255,255,0.9)', 'rgba(80,220,255,0)'), color: 0x9ff8ff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.set(top.x, 0.12, top.z); scene.add(ring);
+    this.beacon = [b, b2, ring]; this.beaconRing = ring;
+  },
+  // ============================================================
+  //  per frame
+  // ============================================================
+  vehicles(game) { const out = [game.player]; if (Race.state === 'racing' && Race.ai) for (const a of Race.ai) if (a.veh) out.push(a.veh); return out; },
+  vehicleUpdate(V, dt, game) {
+    const p = V.pos, inZone = Math.abs(p.x - ATL.x) < ATL.r + 480 && Math.abs(p.z - ATL.z) < ATL.r + 320;
+    if (!inZone && !V.bubble && !V.bubbleMesh) return;
+    const dry = this.dryAt(V);
+    for (const gte of this.gates) { const dx = p.x - gte.x, dz = p.z - gte.z, along = dx * gte.nx + dz * gte.nz; if (Math.abs(along) < 3 && Math.hypot(dx - gte.nx * along, dz - gte.nz * along) < gte.r && p.y > gte.y - 2.5 && p.y < gte.y + gte.h) V.bubbleOK = true; }
+    if (dry) V.bubbleOK = true; // (an airlock: leave a tube or the dome onto the seabed and the air comes with you)
+    if (p.y > 0.8) V.bubbleOK = false;
+    const want = !!V.bubbleOK && p.y < -0.35 && !dry && inZone;
+    if (want !== !!V.bubble) { V.bubble = want; this.bubbleFx(V, want, game); }
+    // the bubble round the car: grows in, pops out
+    if (V.bubble && !V.bubbleMesh) { const m = new THREE.Mesh(this.bubbleGeo, this.bubbleMat); m.position.y = 0.72; m.renderOrder = 4; m.frustumCulled = false; m.userData.s = 0; V.mesh.add(m); V.bubbleMesh = m; }
+    if (V.bubbleMesh) { const m = V.bubbleMesh, tgt = V.bubble ? 1 : 0; m.userData.s += (tgt - m.userData.s) * Math.min(1, dt * (tgt ? 7 : 14)); const s = m.userData.s; m.visible = s > 0.02; m.scale.set(2.05 * s, 1.5 * s, 3.25 * s); }
+    // splashes where you cross the surface; bubbles streaming off a moving bubble
+    if (inZone && V.lastY !== undefined && ((V.lastY > 0.25 && p.y <= 0.25) || (V.lastY < -0.1 && p.y >= -0.1))) this.splash(V, game);
+    V.lastY = p.y;
+    if (V.bubble && (V.speed || 0) > 3 && Math.random() < dt * 22) { const h = V.heading || 0, fx = Math.sin(h), fz = Math.cos(h); game.particles.emit(p.x - fx * 3 + (Math.random() - 0.5) * 2, p.y + 0.6 + Math.random() * 1.6, p.z - fz * 3 + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 0.6, 1.2 + Math.random(), (Math.random() - 0.5) * 0.6, 0xe8fbff, 0.35, 2.4, 0.3); }
+  },
+  bubbleFx(V, on, game) {
+    const p = V.pos, isP = V === game.player;
+    for (let k = 0; k < (on ? 26 : 34); k++) { const a = Math.random() * TAU, e = (Math.random() - 0.5) * Math.PI, sp = on ? 1 + Math.random() * 2 : 3 + Math.random() * 5; game.particles.emit(p.x + Math.cos(a) * 2, p.y + 1 + Math.sin(e) * 1.5, p.z + Math.sin(a) * 2, Math.cos(a) * sp, 1 + Math.random() * 3, Math.sin(a) * sp, 0xf0fdff, on ? 0.5 : 0.4, 1.6, 0.4); }
+    if (isP) { if (on) { Sound.bubbleOn && Sound.bubbleOn(); if (!this.toldBubble) { this.toldBubble = true; UI.flash('Air bubble on: drive anywhere!', 1.8); } } else if (p.y < -0.5) Sound.bubblePop && Sound.bubblePop(); }
+  },
+  splash(V, game) {
+    const p = V.pos;
+    for (let k = 0; k < 40; k++) { const a = Math.random() * TAU, sp = 2 + Math.random() * 6; game.particles.emit(p.x + Math.cos(a) * 1.5, 0.3, p.z + Math.sin(a) * 1.5, Math.cos(a) * sp + (V.vx || 0) * 0.15, 4 + Math.random() * 8, Math.sin(a) * sp + (V.vz || 0) * 0.15, Math.random() < 0.7 ? 0xeefaff : 0xbfe6f5, 1.3, 1.4, 2); }
+    if (V === game.player) Sound.splash && Sound.splash();
+  },
+  update(dt, game) {
+    if (!this.ready) return;
+    this.t += dt; const t = this.t;
+    const cam = game.camera.position, P = game.player;
+    const dA = Math.hypot(cam.x - ATL.x, cam.z - ATL.z), near = dA < ATL.r + 520;
+    this.k = near ? smooth(-0.1, -1.4, cam.y) : 0;
+    this.depth = smooth(-2, -36, cam.y);
+    this.inside = (P.onDeck && P.onDeck.dry) || this.dryAt(P) ? 1 : 0;
+    this.g.visible = near && (this.k > 0 || cam.y < 2);
+    this.gt.visible = dA < ATL.r + 1000;
+    for (const m of this.waterParts) m.visible = this.k > 0;
+    for (const V of this.vehicles(game)) this.vehicleUpdate(V, dt, game);
+    this.bubbleMat.uniforms.uT.value = t; if (this.gateMat) this.gateMat.uniforms.uT.value = t;
+    // the beacon (fades out up close, so it doesn't fill the screen; always a little visible from the coast)
+    const bd = Math.hypot(cam.x - this.spireTop.x, cam.z - this.spireTop.z);
+    this.beamMat2.opacity = (0.38 + 0.12 * Math.sin(t * 1.3)) * (this.k > 0 ? 0.7 : smooth(40, 160, bd));
+    this.beaconRing.scale.setScalar(1 + 0.12 * Math.sin(t * 2));
+    if (this.g.visible) {
+      this.kelpMat.userData.t.value = t; this.fishMat.userData.t.value = t; this.rayMat.userData.t.value = t;
+      for (const r of this.rings) { r.rotation.y += r.userData.spin * dt; r.rotation.x = Math.sin(t * 0.4 + r.userData.spin * 9) * 0.25; }
+      this.crystalMat.emissiveIntensity = 0.8 + 0.25 * Math.sin(t * 1.7);
+      this.beamMat.opacity = 0.35 + 0.25 * Math.sin(t * 3.1) * Math.sin(t * 1.3);
+      const A = this.glows.userData.A; this.glowList.forEach((q, i) => { A.alpha[i] = q.a * (0.8 + 0.2 * Math.sin(t * 2 + i)); }); this.glows.geometry.attributes.iAlpha.needsUpdate = true;
+      this.updateLife(dt, t);
+    }
+    if (this.k > 0) {
+      this.surfTex.offset.set(t * 0.004, t * 0.0025); this.caustMat.uniforms.uT.value = t; this.caustMat.uniforms.uK.value = 1 - 0.5 * (game.env.L && game.env.L.windows || 0);
+      this.shafts.children.forEach(m => { m.material.opacity = 0.16; m.scale.x = m.scale.z = 1 + 0.08 * Math.sin(t * 0.5 + m.userData.ph); });
+      this.shaftMat.opacity = 0.14 * (1 - 0.8 * (game.env.L && game.env.L.windows || 0));
+      const a = this.snow.geometry.attributes.position, o = this.snowOff, cx = cam.x - 35, cy = cam.y - 18, cz = cam.z - 35;
+      for (let i = 0; i < this.snowN; i++) { const sw = Math.sin(t * 0.6 + i) * 0.5; a.setXYZ(i, cx + ((o[i * 3] - cam.x + sw + t * 0.3) % 70 + 70) % 70, cy + ((o[i * 3 + 1] - t * 0.35 - cam.y) % 36 + 36) % 36, cz + ((o[i * 3 + 2] - cam.z + sw * 0.6) % 70 + 70) % 70); }
+      a.needsUpdate = true;
+      // bubbles rising from the spire and the pylons
+      if ((this.ventT = (this.ventT || 0) - dt) < 0) { this.ventT = 0.12; const src = Math.random() < 0.4 ? this.spireTop : this.pylons[Math.floor(Math.random() * this.pylons.length)]; if (src && Math.hypot(src.x - cam.x, src.z - cam.z) < 160) game.particles.emit(src.x + (Math.random() - 0.5) * 2, src.y - Math.random() * 6, src.z + (Math.random() - 0.5) * 2, 0, 1.5, 0, 0xe8fbff, 0.45, 5, 0.2); }
+    }
+    this.light(game);
+    Sound.underwater && Sound.underwater(this.k, this.depth, dt);
+  },
+  updateLife(dt, t) {
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    const per = 30;
+    this.schools.forEach((s, si) => {
+      const th = s.ph + t * s.sp, cx = s.x + Math.cos(th) * s.r, cz = s.z + Math.sin(th) * s.r, cy = s.y + Math.sin(t * 0.3 + si) * 3, hd = Math.atan2(-Math.sin(th) * Math.sign(s.sp), Math.cos(th) * Math.sign(s.sp));
+      const ch = Math.cos(hd), sh = Math.sin(hd);
+      for (let k = 0; k < per; k++) { const f = this.fishOff[si * per + k], w = Math.sin(t * 0.8 + f.w) * 0.8; v.set(cx + f.x * ch + f.z * sh + w, cy + f.y + Math.sin(t + f.w) * 0.4, cz - f.x * sh + f.z * ch); e.set(0, hd + Math.sin(t * 2 + f.w) * 0.15, 0); q.setFromEuler(e); sc.setScalar(f.sz); m4.compose(v, q, sc); this.fish.setMatrixAt(si * per + k, m4); }
+    });
+    this.fish.instanceMatrix.needsUpdate = true;
+    this.rayPath.forEach((r, k) => { const th = r.ph + t * r.sp, x = ATL.x + Math.cos(th) * r.r, z = ATL.z + Math.sin(th) * r.r, hd = Math.atan2(-Math.sin(th) * Math.sign(r.sp), Math.cos(th) * Math.sign(r.sp)); e.set(0, hd, Math.sin(t * 0.4 + k) * 0.25 * Math.sign(r.sp)); q.setFromEuler(e); v.set(x, r.y + Math.sin(t * 0.25 + k) * 2.5, z); sc.setScalar(r.s); m4.compose(v, q, sc); this.rays.setMatrixAt(k, m4); });
+    this.rays.instanceMatrix.needsUpdate = true;
+    this.jellies.forEach((j, k) => { const pulse = 0.5 + 0.5 * Math.sin(t * 1.6 + j.ph); e.set(Math.sin(t * 0.3 + j.ph) * 0.15, t * 0.1 + j.ph, 0); q.setFromEuler(e); v.set(j.x + Math.sin(t * 0.07 + j.ph) * 4, j.y + Math.sin(t * 0.21 + j.ph) * 3 + pulse * 0.4, j.z + Math.cos(t * 0.05 + j.ph) * 4); sc.set(j.s * (1 + 0.15 * pulse), j.s * (1 - 0.2 * pulse), j.s * (1 + 0.15 * pulse)); m4.compose(v, q, sc); this.jelly.setMatrixAt(k, m4); });
+    this.jelly.instanceMatrix.needsUpdate = true;
+  },
+  // under water: blue-green light that dims with depth, a short fog, headlights on deep down, no sky
+  light(game) {
+    const env = game.env, L = env.L, k = this.k, cam = game.camera, scene = env.scene;
+    if (!L) return;
+    if (k <= 0 && !this.wasIn) return;
+    const dp = this.depth, night = L.windows || 0, f = scene.fog;
+    const fc = this._fc || (this._fc = new THREE.Color()); fc.set(0x3aa6b8).lerp(this._cd || (this._cd = new THREE.Color(0x0c3858)), dp).multiplyScalar(lerp(1, 0.3, night));
+    f.color.lerp(fc, k); this.fogNF = [lerp(L.fogNear, 1.5, k), lerp(L.fogFar, lerp(240, 150, dp) * (this.inside ? 1.3 : 1), k)]; // (applied in late(): Sky.update resets the distances after us)
+    env.sun.intensity = L.sunI * lerp(1, 0.5, k);
+    env.hemi.intensity = lerp(L.hemiI, L.hemiI * 0.85 + 0.25, k);
+    env.hemi.color.set(L.hemiSky).lerp(this._h1 || (this._h1 = new THREE.Color(0x86e4f0)), k);
+    env.hemi.groundColor.set(L.hemiGround).lerp(this._h2 || (this._h2 = new THREE.Color(0x173e48)), k);
+    if ('environmentIntensity' in scene) scene.environmentIntensity = lerp(1, 0.55, k);
+    Atmos.caveK = k * dp * 0.9;
+    if (this._bg0 === undefined) this._bg0 = scene.background;
+    const deepLook = k > 0.5; env.sky.visible = !deepLook; scene.background = deepLook ? (this._bgc || (this._bgc = new THREE.Color())).copy(f.color) : this._bg0;
+    const far = k > 0.95 && dp > 0.25 ? Math.min(900, Math.ceil(Math.max(260, this.fogNF[1] * 1.3) / 20) * 20) : 3200; if (cam.far !== far) { cam.far = far; cam.updateProjectionMatrix(); } // (past the fog it's all fog: don't draw it)
+    this.wasIn = k > 0;
+  },
+  // after Atmos has had its say: nothing up top (rain, lamp glows, the far hills) shows through the water
+  late(game) {
+    if (!this.ready) return;
+    if (this.k > 0 && this.fogNF) { const f = game.env.scene.fog; f.near = this.fogNF[0]; f.far = this.fogNF[1]; }
+    if (this.k < 0.3) { if (this.hid) { this.hid = false; if (Atmos.beam) Atmos.beam.visible = true; } return; }
+    this.hid = true;
+    if (Atmos.rainMesh) Atmos.rainMesh.visible = false;
+    if (Atmos.glowPts) Atmos.glowPts.visible = false;
+    if (Atmos.beam) Atmos.beam.visible = false;
+    if (World.backdrop) World.backdrop.visible = false;
+  },
+};
 
 // ============================================================
 //  NOS visuals for every car that has a bottle: blue exhaust flames, outlet
@@ -8009,7 +8725,7 @@ const Sound = {
     let AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     try { this.musicOn = JSON.parse(localStorage.getItem('m67-music') ?? 'true'); } catch (e) { }
     const ctx = this.ctx = new AC();
-    this.master = ctx.createGain(); this.master.gain.value = this.on ? 0.7 : 0; this.master.connect(ctx.destination);
+    this.master = ctx.createGain(); this.master.gain.value = this.on ? 0.7 : 0; this.uwLP = ctx.createBiquadFilter(); this.uwLP.type = 'lowpass'; this.uwLP.frequency.value = 22000; this.uwLP.Q.value = 0.5; this.master.connect(this.uwLP).connect(ctx.destination); // (the low-pass muffles everything under water)
     const comp = this.comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.connect(this.master);
     this.ambBus = ctx.createGain(); this.ambBus.gain.value = 1; this.ambBus.connect(this.master);
     // engine: two detuned saws + sub square through a waveshaper and lowpass
@@ -8392,6 +9108,46 @@ const Sound = {
     const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
     s.connect(f).connect(g).connect(this.comp); s.start(t); s.stop(t + 1);
   },
+  // Atlantis: under water everything goes muffled, the sea rumbles, bubbles blip, and deep down a whale calls now and then
+  underwater(k, depth, dt) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    this.uwLP.frequency.setTargetAtTime(k > 0.01 ? lerp(4000, 650, k) : 22000, t, k > 0.01 ? 0.08 : 0.15);
+    if (!this.uw) {
+      if (k <= 0) return;
+      const n = ctx.createBufferSource(); n.buffer = this.nb; n.loop = true; const bp = ctx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 220;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09; const lg = ctx.createGain(); lg.gain.value = 0.3; const am = ctx.createGain(); am.gain.value = 0.7; lfo.connect(lg).connect(am.gain);
+      const g = ctx.createGain(); g.gain.value = 0; n.connect(bp).connect(am).connect(g).connect(ctx.destination); n.start(); lfo.start(); // (straight out, so the low-pass doesn't dull it twice)
+      this.uw = { g, blip: 1, whale: 12 };
+    }
+    const uw = this.uw; uw.g.gain.setTargetAtTime(0.22 * k * (this.on ? 1 : 0), t, 0.4);
+    if (k > 0.3 && this.on && (uw.blip -= dt) <= 0) { // little bubble blips
+      uw.blip = 0.15 + Math.random() * 0.9;
+      const o = ctx.createOscillator(), g2 = ctx.createGain(), f0 = 500 + Math.random() * 900; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 1.9, t + 0.07);
+      g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(0.05 * k, t + 0.01); g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.1); o.connect(g2).connect(ctx.destination); o.start(t); o.stop(t + 0.12);
+    }
+    if (k > 0.5 && depth > 0.4 && this.on && (uw.whale -= dt) <= 0) { // a far-off whale
+      uw.whale = 18 + Math.random() * 25;
+      const o = ctx.createOscillator(), vib = ctx.createOscillator(), vg = ctx.createGain(), g2 = ctx.createGain(), f0 = 210 + Math.random() * 80, d = 2.6 + Math.random() * 1.4;
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * 1.35, t + d * 0.4); o.frequency.exponentialRampToValueAtTime(f0 * 0.6, t + d);
+      vib.frequency.value = 5; vg.gain.value = 6; vib.connect(vg).connect(o.frequency);
+      g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(0.06, t + 0.6); g2.gain.setValueAtTime(0.06, t + d * 0.7); g2.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g2).connect(ctx.destination); o.start(t); o.stop(t + d + 0.05); vib.start(t); vib.stop(t + d + 0.05);
+    }
+  },
+  bubbleOn() { // the air wrapping round the car: a big soft 'bloop'
+    if (!this.ctx) return; const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(520, t + 0.22); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.4);
+  },
+  bubblePop() {
+    if (!this.ctx) return; const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.nb; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 2;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12); s.connect(f).connect(g).connect(ctx.destination); s.start(t, Math.random()); s.stop(t + 0.14);
+  },
+  splash() {
+    if (!this.ctx) return; const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.nb; s.loop = true; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(500, t + 0.7); f.Q.value = 0.8;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9); s.connect(f).connect(g).connect(this.comp); s.start(t); s.stop(t + 1);
+  },
   // a zombie's moan: a sliding sawtooth through two vowel formants, with a breathy rasp
   zombieGroan(pan = 0, dist = 10) {
     if (!this.ctx) return;
@@ -8603,6 +9359,8 @@ const RACES = [
   { id: 'volcano', name: 'Volcano Climb', blurb: 'Out along the Cinder Causeway to Cinder Isle, twice round Mount Ember on the Ember Road spiral (over the lava river), into the volcano at the summit, then down the Lava Tube past the magma chamber and out at the bottom by the lava flow. Mind the eruptions!', level: 'Hard', skill: 0.92,
     route: [{ road: 'coast', from: [40, 515], to: 'deck:cindercauseway', dir: -1 }, { deck: 'cindercauseway' }, { road: 'ember', from: 'prev', to: [LAVA_TUBE.pts[0][0], LAVA_TUBE.pts[0][1]] }, { deck: 'lavatube' },
       { road: 'lavaflow', from: 'prev', to: [EMBER.x + Math.cos(0.98) * 216, EMBER.z + Math.sin(0.98) * 216] }] },
+  { id: 'atlantis', name: 'Atlantis Run', blurb: 'Off the east coast down the Dive Ramp and under the waves through the bubble gate, along the Processional Way, round the sunken city in the glass Crystal Line, then down the Grand Canal into the Great Dome.', level: 'Medium', skill: 0.92,
+    route: [{ road: 'coast', from: [626, -95], to: 'deck:diveramp' }, { deck: 'diveramp' }, { road: 'abyss', from: 'prev', to: [972, -30] }, { deck: 'crystalline' }, { deck: 'grandcanal' }] },
   { id: 'portal', name: 'Portal Rush', blurb: 'Up Sunset Canyon and back down the coast to Bayview through five portals: the whole field turns into Energy Orbs and back again, and the last dash to the flag is pure energy.', level: 'Medium', skill: 0.92,
     route: [{ road: 'canyon', from: [40, 365], to: [588, -230] }, { road: 'coast', from: [588, -230], to: [150, 515], dir: -1 }],
     portals: [1.5 / 12, 3.5 / 12, 5.5 / 12, 7.5 / 12, 9.5 / 12] }, // (between the checkpoints)
@@ -8957,7 +9715,7 @@ const Upgrades = {
   rivalScale() { return 1 + 0.005 * this.total(); },
 };
 
-const CHAMP_ORDER = ['lighthouse', 'canyon', 'gull', 'pass', 'viaduct', 'spiral', 'cave', 'ice', 'volcano', 'tour', 'cloudrun', 'moondust'];
+const CHAMP_ORDER = ['lighthouse', 'canyon', 'gull', 'pass', 'viaduct', 'spiral', 'cave', 'ice', 'volcano', 'atlantis', 'tour', 'cloudrun', 'moondust'];
 const CHAMP_POINTS = [10, 7, 5, 3];       // per finishing place
 const CHAMP_PARTS = [3, 2, 1, 1];         // upgrade points per finishing place
 const Champ = {
@@ -9422,7 +10180,8 @@ const UI = {
     $('rs-next').onclick = () => { $('results').hidden = true; game.startChampRound(); };
     $('rs-ups').onclick = () => { $('results').hidden = true; Race.quit(game); this.raceMode(false); game.togglePause(true); this.showTab('champ'); };
     $('rp-skip').onclick = () => Replay.stop(game);
-    for (const t of ['drive', 'champ', 'rec']) $('pt-' + t).onclick = () => this.showTab(t);
+    for (const t of ['map', 'drive', 'champ', 'rec']) $('pt-' + t).onclick = () => this.showTab(t);
+    $('wmap').onclick = (ev) => this.mapTap(ev);
     $('ch-go').onclick = () => { game.togglePause(false); game.startChampRound(); };
     $('ch-new').onclick = () => { Champ.begin(); this.buildChamp(); };
     $('p-ghost').onclick = () => { Ghost.setOn(!Ghost.on); this.syncToggles(); };
@@ -9474,8 +10233,9 @@ const UI = {
     setTimeout(() => el.remove(), 2900);
   },
   showTab(t) {
-    for (const k of ['drive', 'champ', 'rec']) { $('pt-' + k).classList.toggle('on', k === t); $('ps-' + k).hidden = k !== t; }
-    if (t === 'champ') this.buildChamp(); if (t === 'rec') this.buildRecords();
+    for (const k of ['map', 'drive', 'champ', 'rec']) { $('pt-' + k).classList.toggle('on', k === t); $('ps-' + k).hidden = k !== t; }
+    $('pause').querySelector('.card').classList.toggle('map-on', t === 'map'); // (phones on their side: the map sits beside the buttons)
+    if (t === 'champ') this.buildChamp(); if (t === 'rec') this.buildRecords(); if (t === 'map') { this.mapSel = null; this.drawWorldMap(); }
   },
   buildChamp() {
     const C = Champ.s || Champ.load(), U = Upgrades.s || Upgrades.load(), ord = ['1st', '2nd', '3rd', '4th'];
@@ -9551,6 +10311,40 @@ const UI = {
     this.drawMinimap();
     this.drawGauges();
     this.drawNos();
+  },
+  // ---------- the whole world, for the pause screen: you, the islands, every sprint (tap a flag twice to go there) ----------
+  mapAreas() { return [['Bayview', -165, 455], ['Gator Bayou', BAYOU.x, BAYOU.z + 175], ['Frostpeak Isle', FROST.x, FROST.z - 220], ['Cinder Isle', CINDER.x + 20, CINDER.z + 210], ['Atlantis', ATL.x, ATL.z + 150], ['Gull Rock', 700, 785], ['Pinecrest', -150, -330], ['Sunset Canyon', 420, 120]]; },
+  drawWorldMap() {
+    const cv = $('wmap'), c = cv.getContext('2d'), S = cv.width, g = this.game, P = g.player, img = World.minimapImage;
+    const toPx = (v) => (v + W.half) / (2 * W.half) * S;
+    c.clearRect(0, 0, S, S); c.drawImage(img, 0, 0, S, S);
+    c.lineJoin = 'round'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (const [name, x, z] of this.mapAreas()) { c.font = '700 30px system-ui, sans-serif'; c.lineWidth = 7; c.strokeStyle = 'rgba(14,26,48,0.75)'; c.strokeText(name, toPx(x), toPx(z)); c.fillStyle = '#fff4e0'; c.fillText(name, toPx(x), toPx(z)); }
+    if (Race.route && Race.state !== 'free') { c.beginPath(); Race.route.forEach((p, i) => i ? c.lineTo(toPx(p.x), toPx(p.z)) : c.moveTo(toPx(p.x), toPx(p.z))); c.strokeStyle = '#ff3d8f'; c.lineWidth = 6; c.stroke(); }
+    this.mapFlags = [];
+    for (const r of RACES) {
+      const x = toPx(r.marker.x), y = toPx(r.marker.z), sel = this.mapSel === r, s = sel ? 1.5 : 1.15;
+      c.fillStyle = sel ? '#ffc845' : '#ff3d8f'; c.strokeStyle = '#fff4e0'; c.lineWidth = 3;
+      c.beginPath(); c.arc(x, y, 13 * s, 0, TAU); c.fill(); c.stroke();
+      c.fillStyle = sel ? '#14213d' : '#fff4e0'; c.fillRect(x - 2 * s, y - 7.5 * s, 3 * s, 15 * s); c.beginPath(); c.moveTo(x + 1 * s, y - 7.5 * s); c.lineTo(x + 8.5 * s, y - 4.2 * s); c.lineTo(x + 1 * s, y - 1 * s); c.fill();
+      this.mapFlags.push({ r, x, y });
+    }
+    if (this.mapSel) { const f = this.mapFlags.find(q => q.r === this.mapSel); if (f) { c.font = '800 32px system-ui, sans-serif'; c.lineWidth = 8; c.strokeStyle = 'rgba(14,26,48,0.85)'; const ty = f.y > 80 ? f.y - 42 : f.y + 46; c.strokeText(f.r.name, clamp(f.x, 160, S - 160), ty); c.fillStyle = '#ffc845'; c.fillText(f.r.name, clamp(f.x, 160, S - 160), ty); } }
+    // you
+    const px = toPx(P.pos.x), pz = toPx(P.pos.z);
+    c.save(); c.translate(px, pz); c.rotate(Math.PI - P.heading); c.fillStyle = '#e0186e'; c.strokeStyle = '#fff4e0'; c.lineWidth = 5;
+    c.beginPath(); c.moveTo(0, -24); c.lineTo(17, 18); c.lineTo(0, 9); c.lineTo(-17, 18); c.closePath(); c.fill(); c.stroke(); c.restore();
+    c.beginPath(); c.arc(px, pz, 34 + 4 * Math.sin(performance.now() / 300), 0, TAU); c.strokeStyle = 'rgba(224,24,110,0.6)'; c.lineWidth = 4; c.stroke();
+    // north
+    c.font = '800 28px system-ui, sans-serif'; c.fillStyle = '#fff4e0'; c.strokeStyle = 'rgba(14,26,48,0.75)'; c.lineWidth = 6; c.strokeText('N \u2191', S - 52, 38); c.fillText('N \u2191', S - 52, 38);
+    $('wmap-hint').textContent = this.mapSel ? `${this.mapSel.name}: tap the flag again to drive there` : (this.game.currentPlace ? `You're at ${this.game.currentPlace.name}. ` : '') + 'Tap a pink flag to pick a sprint';
+  },
+  mapTap(ev) {
+    const cv = $('wmap'), r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * cv.width, y = (ev.clientY - r.top) / r.height * cv.height;
+    const hit = Math.max(46, 24 * cv.width / r.width); // (at least a fingertip wide, however small the map is drawn)
+    let best = null, bd = hit * hit; for (const f of this.mapFlags || []) { const d = (f.x - x) ** 2 + (f.y - y) ** 2; if (d < bd) { bd = d; best = f; } }
+    if (best && best.r === this.mapSel) { const race = best.r; this.mapSel = null; this.game.togglePause(false); if (Race.state !== 'free') { Race.quit(this.game); this.raceMode(false); } this.game.teleportToRace(race); return; }
+    this.mapSel = best ? best.r : null; this.drawWorldMap();
   },
   drawMinimap() {
     const c = this.mm, S = 336, g = this.game, P = g.player;
@@ -9837,7 +10631,7 @@ const Game = {
     playTitleVideo();
     this.last = performance.now();
     this.placeTimer = 0;
-    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input, Cave, Zones, caveSize, HOLLOW, BAYOU, inCaveHole, Winter, FROST, GLASS, CINDER, EMBER, CINDER_LAND, lavaLine, lavaDist, LavaTube, LAVA_TUBE, caveDeckMouths, Volcano });
+    window.__game = this; this.renderer.info.autoReset = true; window.__dbg = { Race, RACES, UI, World, Post, Decks }; window.Decks = Decks; window.roadAt = roadAt; window.groundHeight = groundHeight; window.RACES = RACES; window.deckAt = deckAt; window.THREE = THREE; Object.assign(window, { Orb, buildRoute, Sky, MOON, moonSurfaceY, routeAt, Sound, NosFX, NosPlay, Champ, Upgrades, Challenges, Ghost, Replay, WxDirector, Mirror, Rumble, buildRivalCar, RIVALS, roadsideSite, ROADSIDE_SITES, surfaceHeight, nearestDrivable, Atmos, LIGHTING, WEATHER, Input, Cave, Zones, caveSize, HOLLOW, BAYOU, inCaveHole, Winter, FROST, GLASS, CINDER, EMBER, CINDER_LAND, lavaLine, lavaDist, LavaTube, LAVA_TUBE, caveDeckMouths, Volcano, Atlantis, ATL, ATL_CANAL });
     window.claude?.hot?.snapshot?.(() => ({ x: this.player.pos.x, z: this.player.pos.z, heading: this.player.heading, driving: this.driving }));
     if (saved.driving) this.startDriving(true);
     // first touch or key on the title screen wakes the audio so the title music can play
@@ -9858,7 +10652,7 @@ const Game = {
     if (!this.driving) return;
     this.paused = v === undefined ? !this.paused : v;
     $('pause').hidden = !this.paused;
-    if (this.paused) { UI.buildRaceList(); UI.syncToggles(); }
+    if (this.paused) { UI.buildRaceList(); UI.syncToggles(); UI.showTab('map'); }
   },
   startChampRound() {
     const C = Champ.s || Champ.load(); if (!C.active) return;
@@ -9984,10 +10778,10 @@ const Game = {
     }
     this.updateCamera(dt);
     this.atmosphere(dt);
-    Cave.update(this.paused ? 0 : dt, this); Winter.update(this.paused ? 0 : dt, this); LavaTube.update(this.paused ? 0 : dt, this); Volcano.update(this.paused ? 0 : dt, this); Zones.update(dt, this);
+    Cave.update(this.paused ? 0 : dt, this); Winter.update(this.paused ? 0 : dt, this); LavaTube.update(this.paused ? 0 : dt, this); Volcano.update(this.paused ? 0 : dt, this); Atlantis.update(this.paused ? 0 : dt, this); Zones.update(dt, this);
     Sky.update(dt, this); Orb.update(this.paused ? 0 : dt, this);
     World.anim.forEach(f => f(this.t));
-    Atmos.update(dt, this);
+    Atmos.update(dt, this); Atlantis.late(this);
     World.clouds.forEach((c, k) => { c.position.x += dt * (1.5 + (k % 3)); if (c.position.x > 1000) c.position.x = -1000; });
     // lights
     const braking = input.brake > 0.1 && P.vF > 0.5;

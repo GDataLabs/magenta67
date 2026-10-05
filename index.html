@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="31bee262c9"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="cb9b8bf888"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
 
 <meta name="theme-color" content="#14213d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -254,6 +254,17 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 /* ---------- overlays ---------- */
 .overlay { position: absolute; inset: 0; z-index: 35; display: grid; place-items: center; background: rgba(20, 33, 61, 0.42); padding-inline: 16px; }
 .card { width: min(560px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 22px 22px 20px; }
+#wmap { display: block; width: 100%; max-width: 516px; aspect-ratio: 1 / 1; margin: 10px auto 2px; border-radius: 14px; cursor: pointer; touch-action: manipulation; background: #4fb3c8; }
+.wmap-hint { text-align: center; margin-top: 6px; }
+@media (max-height: 520px) { #wmap { max-width: min(100%, calc(100vh - 170px)); } }
+/* phones on their side: the map goes beside the buttons and tabs instead of below them, so it fits without scrolling */
+@media (orientation: landscape) and (max-height: 520px) {
+  #pause .card.map-on { width: min(880px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 20px; align-items: start; }
+  #pause .card.map-on > * { grid-column: 1; }
+  #pause .card.map-on > #ps-map { grid-column: 2; grid-row: 1 / span 5; }
+  #pause .card.map-on #wmap { width: calc(100vh - 112px); max-width: none; margin: 0; }
+  #pause .card.map-on .wmap-hint { max-width: calc(100vh - 112px); }
+}
 .card h2 { font-family: var(--f-display); font-weight: 400; font-size: 38px; margin: 2px 0 6px; line-height: 1.05; text-wrap: balance; }
 .card p { margin: 0 0 14px; color: var(--muted); line-height: 1.45; }
 .card .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
@@ -338,7 +349,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
     <div class="inner">
       <div class="sub">1967 Shelby GT500 · Open road</div>
       <h1>Magenta '67</h1>
-      <div class="spec"><span><b>428</b> cu in V8</span><span><b>355</b> hp</span><span><b>13</b> sprints</span><span><b>Sky Highway</b> to the Moon</span><span><b>Emerald</b> Caverns</span><span><b>Frozen</b> lake</span><span><b>Volcano</b> &amp; lava tube</span><span><b>Energy</b> portals</span><span><b>NOS</b> &amp; slipstream</span><span><b>Championship</b> + upgrades</span></div>
+      <div class="spec"><span><b>428</b> cu in V8</span><span><b>355</b> hp</span><span><b>14</b> sprints</span><span><b>Sky Highway</b> to the Moon</span><span><b>Emerald</b> Caverns</span><span><b>Frozen</b> lake</span><span><b>Volcano</b> &amp; lava tube</span><span><b>Atlantis</b> under the sea</span><span><b>Energy</b> portals</span><span><b>NOS</b> &amp; slipstream</span><span><b>Championship</b> + upgrades</span></div>
       <div class="row">
         <button class="btn primary" id="b-start">Start driving</button>
         <button class="btn ghost" id="b-howto">How to drive</button>
@@ -375,7 +386,11 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <button class="btn ghost" id="p-restart" hidden>Restart race</button>
         <button class="btn ghost" id="p-quit" hidden>Quit race</button>
       </div>
-      <div class="tabs"><button id="pt-drive" class="on">Sprints &amp; settings</button><button id="pt-champ">Championship</button><button id="pt-rec">Records</button></div>
+      <div class="tabs"><button id="pt-map" class="on">Map</button><button id="pt-drive">Sprints &amp; settings</button><button id="pt-champ">Championship</button><button id="pt-rec">Records</button></div>
+      <div id="ps-map">
+        <canvas id="wmap" width="1024" height="1024" aria-label="Map of the whole world"></canvas>
+        <div class="label wmap-hint" id="wmap-hint">Tap a pink flag to drive to that sprint</div>
+      </div>
       <div id="ps-champ" hidden>
         <div class="label" id="ch-head" style="margin-top:10px">Championship</div>
         <table class="res" id="ch-table"></table>
@@ -389,7 +404,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <div class="label" style="margin-top:10px">Your records</div>
         <table class="res" id="rec-table"></table>
       </div>
-      <div id="ps-drive">
+      <div id="ps-drive" hidden>
       <div class="label" style="margin-top:12px">Sprints</div>
       <div class="racelist" id="p-races"></div>
       <div class="toggles">
@@ -432,5 +447,5 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=31bee262c9"></script>
+<script type="module" src="game.js?v=cb9b8bf888"></script>
 </body></html>
