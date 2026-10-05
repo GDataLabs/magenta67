@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
-const M67_BUILD = 'edbca01342';
+const M67_BUILD = '5b1d3154ae';
 { const m = document.querySelector('meta[name="m67-build"]');
   if (!m || m.content !== M67_BUILD) { let tried = false; try { tried = sessionStorage.getItem('m67-fresh') === M67_BUILD; sessionStorage.setItem('m67-fresh', M67_BUILD); } catch (e) { }
     if (!tried) { location.replace(location.pathname + '?v=' + M67_BUILD + location.hash); throw new Error('Loading the new version of Magenta 67'); } }
@@ -4736,6 +4736,18 @@ const Post = {
 //  beam), rain (streaks, wet roads, spray, lightning), fog.
 //  Driven by the composed time-of-day + weather preset (env.L).
 // ============================================================
+// Compile the scene's shaders for every place it is drawn: the tilt-shift pass's render target (no tone mapping
+// there, so three.js builds different shaders) and the screen (rear-view mirror, or everything when the pass is off).
+function warmCompile(game) {
+  const r = game.renderer, prev = r.getRenderTarget();
+  try {
+    if (Post.enabled && Post.rt) { r.setRenderTarget(Post.rt); r.compile(game.scene, game.camera); }
+    r.setRenderTarget(null); r.compile(game.scene, game.camera);
+    // browsers finish building a shader the first time it's used; touch each one now, while the loading screen is up
+    for (const p of r.info.programs || []) { if (!p.__warm) { p.__warm = true; p.getUniforms(); p.getAttributes(); } }
+  } catch (e) { }
+  r.setRenderTarget(prev);
+}
 const Atmos = {
   ready: false, grip: 1, wet: 0, rain: 0, lamps: 0, headlights: 0, tailBase: 0.08, flashT: 0, nextFlash: 9,
   init(game) {
@@ -4774,6 +4786,40 @@ const Atmos = {
       scene.add(beam); this.beam = beam;
     }
     this.ready = true; this.apply(game.env, game.env.L);
+  },
+  // Compile the shader variants that weather needs before anyone drives. Fog, rain and night switch the headlights
+  // on, which adds two spot lights to every lit material; three.js then has to build new shaders for everything,
+  // and the first time that happened mid-race (fog rolling in) the game froze for a second or more on phones.
+  // Built once here, the variants are kept, so weather can come and go without a hitch.
+  warmup(game) {
+    const r = game.renderer, sc = game.scene, cam = game.camera, env = game.env;
+    for (const wx of Object.keys(WEATHER)) { const ek = env.preset + ':' + wx; if (!env.envCache[ek]) env.envCache[ek] = makeEnvMap(r, composeLight(env.preset, wx).env); }
+    const show = [...this.heads, this.rainMesh, this.glowPts, this.pools, this.beam].filter(Boolean), was = show.map(o => o.visible);
+    const roads = World.roadMats || [], keep = roads.map(m => m.envMap);
+    const pass = (lightsOn, wet) => {
+      show.forEach((o, i) => o.visible = lightsOn ? true : was[i]);
+      roads.forEach((m, i) => { const want = wet ? sc.environment : keep[i]; if (m.envMap !== want) { m.envMap = want; if (wet) { m.combine = THREE.MixOperation; m.reflectivity = 0.32; } m.needsUpdate = true; } });
+      warmCompile(game);
+      if (!wet) shadowAll();
+    };
+    // The sun's shadow pass has its own depth shaders, one per kind of object, and they change with the light count
+    // too. Widen the shadow camera over the whole world and draw two frames, so every one of them gets built now
+    // (not when the fog arrives, or the first time you drive past something new).
+    const sun = env.sun, sc0 = sun.shadow.camera, keepCam = { l: sc0.left, r: sc0.right, t: sc0.top, b: sc0.bottom, n: sc0.near, f: sc0.far };
+    const keepPos = sun.position.clone(), keepTgt = sun.target.position.clone();
+    const shadowAll = () => {
+      try {
+        Object.assign(sc0, { left: -2200, right: 2200, top: 2200, bottom: -2200, near: 1, far: 9000 }); sc0.updateProjectionMatrix();
+        const d = env.sunDir.lengthSq() > 0 ? env.sunDir : new THREE.Vector3(0.4, 0.8, 0.3);
+        sun.target.position.set(0, 0, 0); sun.position.copy(d).normalize().multiplyScalar(4000); sun.target.updateMatrixWorld(); sun.updateMatrixWorld();
+        const prev = r.getRenderTarget(); r.setRenderTarget(Post.enabled && Post.rt ? Post.rt : null);
+        r.render(sc, cam); r.render(sc, cam); r.setRenderTarget(prev);
+      } catch (e) { }
+      Object.assign(sc0, { left: keepCam.l, right: keepCam.r, top: keepCam.t, bottom: keepCam.b, near: keepCam.n, far: keepCam.f }); sc0.updateProjectionMatrix();
+      sun.position.copy(keepPos); sun.target.position.copy(keepTgt); sun.target.updateMatrixWorld(); sun.updateMatrixWorld();
+      warmCompile(game);
+    };
+    pass(true, true); pass(true, false); pass(false, false); // rain, fog/night, clear
   },
   apply(env, L) {
     if (!this.ready) return;
@@ -5573,7 +5619,7 @@ const Orb = {
     try {
       const fx = game.player.orbFx, tmp = this.makePortal(scene, game.player.pos.x, game.player.pos.y, game.player.pos.z, 0, 1, { to: 'car' });
       fx.g.visible = this.flashMesh.visible = this.trailMesh.visible = fx.bolts.glow.visible = fx.bolts.core.visible = true;
-      game.renderer.compile(scene, game.camera);
+      warmCompile(game);
       fx.g.visible = this.flashMesh.visible = this.trailMesh.visible = fx.bolts.glow.visible = fx.bolts.core.visible = false; scene.remove(tmp.g);
     } catch (e) { }
     this.ready = true;
@@ -7310,6 +7356,8 @@ const WxDirector = {
       s0 = pts[0].s + W0.ramp[0]; s1 = pts[0].s + W0.ramp[1]; s2 = pts[pts.length - 1].s + W0.out[0]; s3 = pts[pts.length - 1].s + W0.out[1];
     } else { s0 = W0.frac[0] * L; s1 = W0.frac[1] * L; if (W0.outFrac) { s2 = W0.outFrac[0] * L; s3 = W0.outFrac[1] * L; } }
     this.spec = { ...W0, s0, s1, s2, s3, A: composeLight(game.env.preset, 'clear'), B: composeLight(game.env.preset, W0.wx), key: game.env.preset };
+    const ek = game.env.preset + ':' + W0.wx; // the fog's reflections, made now (on the grid) rather than mid-race
+    if (!game.env.envCache[ek]) game.env.envCache[ek] = makeEnvMap(game.renderer, this.spec.B.env);
     this.k = 0; this.applied = 0; this.told = false;
   },
   stop(game, now) {
@@ -7476,6 +7524,7 @@ const Game = {
     Atmos.init(this);
     NosFX.init(this);
     Ghost.init(this); Challenges.init(this.scene); Mirror.init(this); Sky.init(this); Orb.init(this);
+    Atmos.warmup(this);
     Input.init();
     UI.init(this);
     this.ui = UI;
