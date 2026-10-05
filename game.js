@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
-const M67_BUILD = '1d9c4eb573';
+const M67_BUILD = '7dbacc2b4a';
 { const m = document.querySelector('meta[name="m67-build"]');
   if (!m || m.content !== M67_BUILD) { let tried = false; try { tried = sessionStorage.getItem('m67-fresh') === M67_BUILD; sessionStorage.setItem('m67-fresh', M67_BUILD); } catch (e) { }
     if (!tried) { location.replace(location.pathname + '?v=' + M67_BUILD + location.hash); throw new Error('Loading the new version of Magenta 67'); } }
@@ -3470,7 +3470,7 @@ function deckHits(x, z, fn, pad = 0) {
     const d = Decks.list[arr[k]], i = arr[k + 1], a = d.samples[i], b = d.samples[i + 1];
     const ex = b.x - a.x, ez = b.z - a.z, L2 = ex * ex + ez * ez || 1;
     const t = ((x - a.x) * ex + (z - a.z) * ez) / L2;
-    if (t < -0.02 || t > 1.02) continue;
+    const tt = d.under ? 0.4 : 0.02; if (t < -tt || t > 1 + tt) continue; // (the cave's tight bends would leave gaps on the outside of a curve otherwise)
     const px = a.x + ex * t, pz = a.z + ez * t, lat = Math.hypot(x - px, z - pz), tc = clamp(t, 0, 1);
     const hw = a.hw ? a.hw + (b.hw - a.hw) * tc : d.halfW;
     if (lat > hw + 0.15 + pad) continue;
@@ -3501,7 +3501,7 @@ function surfaceHeight(x, z, yRef) {
   return d && (d.y > g || underDeck(d, yRef)) ? d.y : g;
 }
 // down at the level of an underground deck (the cave), the hill overhead doesn't count
-function underDeck(d, yRef) { return d.deck.under && yRef - d.y < 4; }
+function underDeck(d, yRef) { return d.deck.under && yRef - d.y < (d.deck.cave ? caveSize(d.deck.samples[d.i].s).top + 2 : 4); } // (in the cave: anywhere below the roof)
 
 // --- terrain interplay ---------------------------------------------------
 // Snap deck ends marked 'road' onto the centreline of the road they join, and remember the join
@@ -5709,6 +5709,22 @@ const Cave = {
     const sm = game.renderer.shadowMap; if (sm.autoUpdate === deep) { sm.autoUpdate = !deep; sm.needsUpdate = true; } // no sun down here: stop redrawing its shadows
     this.wasIn = k > 0;
   },
+  // solid walls: inside Hollow Hill a car can't get further off the centreline than the edge of the road deck
+  contain(V) {
+    if (!this.deck || Math.abs(V.pos.x - HOLLOW.x) > HOLLOW.r + 60 || Math.abs(V.pos.z - HOLLOW.z) > HOLLOW.r + 60) return;
+    let hit = null;
+    deckHits(V.pos.x, V.pos.z, (y, d, i, t, lat) => { if (d === this.deck && (!hit || lat < hit.lat)) hit = { i, t, lat }; }, 22);
+    if (!hit) return;
+    const S = this.deck.samples, a = S[hit.i], b = S[Math.min(hit.i + 1, S.length - 1)];
+    if (a.s < this.sE - 3 || a.s > this.sW + 3) return;      // only inside the hill (and right at the mouths)
+    if (V.pos.y > a.y + caveSize(a.s).top + 3) return;       // up on top of the hill: not our business
+    const ex = b.x - a.x, ez = b.z - a.z, L = Math.hypot(ex, ez) || 1, tx = ex / L, tz = ez / L, tc = clamp(hit.t, 0, 1);
+    const px = a.x + ex * tc, pz = a.z + ez * tc, sl = (V.pos.x - px) * -tz + (V.pos.z - pz) * tx, lim = this.deck.halfW - 0.45;
+    if (Math.abs(sl) <= lim) return;
+    const sg = Math.sign(sl), nx = -tz * sg, nz = tx * sg, over = Math.abs(sl) - lim;
+    V.pos.x -= nx * over; V.pos.z -= nz * over;
+    const vn = V.vx * nx + V.vz * nz; if (vn > 0) { V.vx -= nx * vn * 1.25; V.vz -= nz * vn * 1.25; if (vn > 4) V.impact = Math.max(V.impact || 0, Math.min(1, vn / 16)); }
+  },
   // keep the chase camera inside the tube: off the walls, above the floor, under the roof
   clampCam(v, P) {
     if (!this.inside) return false;
@@ -5877,6 +5893,7 @@ class Vehicle {
     const B = W.half - 6;
     if (Math.abs(this.pos.x) > B) { this.pos.x = Math.sign(this.pos.x) * B; this.vx *= -0.3; }
     if (Math.abs(this.pos.z) > B) { this.pos.z = Math.sign(this.pos.z) * B; this.vz *= -0.3; }
+    Cave.contain(this); // the cave's walls are solid (nobody climbs out into the hill above)
     // vertical: terrain, or a bridge/ramp deck if we're on (or just above) one
     let gT = groundHeight(this.pos.x, this.pos.z); const mG = moonGround(this.pos.x, this.pos.z, this.pos.y); this.onMoon = mG > gT; if (this.onMoon) gT = mG;
     const dk = deckAt(this.pos.x, this.pos.z, this.pos.y);
