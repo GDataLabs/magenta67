@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="89b81c823d"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="2a325760e8"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
 
 <meta name="theme-color" content="#14213d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -252,7 +252,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 #rs-champ { margin-top: 10px; } #rs-cpts { font-size: 14px; color: var(--cream); margin-bottom: 4px; } #rs-cpts b { color: var(--sun); }
 
 /* ---------- overlays ---------- */
-.overlay { position: absolute; inset: 0; z-index: 35; display: grid; place-items: center; background: rgba(20, 33, 61, 0.42); padding-inline: 16px; }
+.overlay { position: absolute; inset: 0; z-index: 35; display: grid; grid-template-rows: minmax(0, 1fr); place-items: center; background: rgba(20, 33, 61, 0.42); padding-inline: 16px; }
 .card { width: min(560px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 22px 22px 20px; }
 #wmap { display: block; width: 100%; max-width: 516px; aspect-ratio: 1 / 1; margin: 10px auto 2px; border-radius: 14px; cursor: pointer; touch-action: manipulation; background: #4fb3c8; }
 .wmap-hint { text-align: center; margin-top: 6px; }
@@ -282,6 +282,25 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 .res tr.you td { color: var(--sun); font-weight: 800; }
 .res td.t { text-align: right; }
 .bigpos { font-family: var(--f-display); font-size: 64px; line-height: 1; color: var(--sun); text-shadow: 0 4px 0 var(--magenta); }
+/* v14.4: the garage, online */
+#garage, #online { z-index: 40; }
+.gar { width: min(760px, 100%); }
+#gar-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+#gar-list .gc { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 4px; border: 1.5px solid var(--glass-line); background: rgba(255,244,224,.06); border-radius: 12px; padding: 12px; }
+#gar-list .gc.sel { border-color: var(--magenta-hi); background: rgba(224,24,110,.16); }
+#gar-list .nm { font-weight: 900; font-size: 16px; font-stretch: 108%; } #gar-list .sub { font-size: 12px; color: var(--muted); }
+#gar-list .bl { font-size: 13px; line-height: 1.35; color: var(--cream); margin: 4px 0 2px; min-height: 52px; }
+#gar-list .bars { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+#gar-list .bars b { display: flex; gap: 3px; } #gar-list .bars i { display: block; width: 14px; height: 6px; border-radius: 3px; background: rgba(255,244,224,.16); } #gar-list .bars i.on { background: var(--sun); }
+#gar-list .tag { margin-top: 6px; font-weight: 800; font-size: 13px; color: var(--sun); }
+.onl { width: min(560px, 100%); }
+.on-nm { grid-template-columns: 116px minmax(0, 1fr); }
+.onl input[type=text] { font: inherit; font-weight: 800; font-size: 15px; color: var(--cream); background: rgba(255,244,224,.08); border: 1px solid var(--glass-line); border-radius: 8px; padding: 8px 10px; min-width: 0; -webkit-user-select: text; user-select: text; }
+.on-join input { width: 9em; text-transform: uppercase; letter-spacing: .2em; }
+.on-codebox { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(255,244,224,.06); }
+.on-codebox b { font-family: var(--f-display); font-weight: 400; font-size: 34px; letter-spacing: .12em; color: var(--sun); }
+#on-players { display: grid; gap: 6px; margin-top: 6px; } #on-players .op { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 8px; background: rgba(255,244,224,.06); font-size: 14px; } #on-players .op span { color: var(--muted); }
+.online-note { color: var(--sun) !important; font-size: 13px; }
 /* v14.3: volume sliders, the Controls screen, controller focus in menus */
 .sliders { display: grid; gap: 8px; margin-top: 8px; }
 .sl { display: grid; grid-template-columns: 116px minmax(0, 1fr) 46px; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 10px; background: rgba(255,244,224,.06); font-weight: 800; font-size: 14px; }
@@ -378,6 +397,10 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <button class="btn ghost" id="b-howto">How to drive</button>
         <button class="btn ghost" id="b-controls">Controls</button>
       </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost small" id="b-garage">Car: <b id="b-garage-v">Magenta '67</b></button>
+        <button class="btn ghost small" id="b-online">Play online with friends</button>
+      </div>
       <button class="btn small ghost" id="b-fsios" hidden>Play full screen on iPhone</button>
       <div id="howto" class="panel" hidden>
         <table>
@@ -436,6 +459,8 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <label class="sl" for="p-sfxvol"><span>Sound effects</span><input type="range" id="p-sfxvol" min="0" max="100" step="5" value="100"><b id="p-sfxvol-v">100%</b></label>
       </div>
       <div class="toggles">
+        <button id="p-car"><span class="label">Car</span><b id="p-car-v">Magenta '67</b></button>
+        <button id="p-online"><span class="label">Online</span><b id="p-online-v">Play with friends</b></button>
         <button id="p-controls"><span class="label">Controls</span><b>Change buttons</b></button>
         <button id="p-cam"><span class="label">Camera</span><b id="p-cam-v">Chase</b></button>
         <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
@@ -462,7 +487,8 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <div class="stats"><div><span class="label">Distance</span><b id="rc-dist">1.4 mi</b></div><div><span class="label">Gates</span><b id="rc-gates">10</b></div><div><span class="label">Your best</span><b id="rc-best">--</b></div></div>
       <div class="label" style="margin-top:12px">Rivals</div>
       <p id="rc-rivals" style="margin-top:4px"></p>
-      <div class="row"><button class="btn primary" id="rc-go">Start sprint</button><button class="btn ghost" id="rc-no">Not now</button></div>
+      <p id="rc-online" class="online-note" hidden></p>
+      <div class="row"><button class="btn primary" id="rc-go">Start sprint</button><button class="btn ghost" id="rc-solo" hidden>Just me vs the rivals</button><button class="btn ghost" id="rc-no">Not now</button></div>
     </div>
   </div>
   <div id="results" class="overlay" hidden>
@@ -472,6 +498,36 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <table class="res" id="rs-table"></table>
       <div id="rs-champ" hidden><div class="label" style="margin-top:6px">Championship standings</div><div id="rs-cpts"></div><table class="res" id="rs-ctable"></table></div>
       <div class="row"><button class="btn primary" id="rs-next" hidden>Next round</button><button class="btn primary" id="rs-again">Race again</button><button class="btn ghost" id="rs-replay">Watch replay</button><button class="btn ghost" id="rs-ups" hidden>Upgrades</button><button class="btn ghost" id="rs-free">Free roam</button></div>
+    </div>
+  </div>
+  <div id="garage" class="overlay" hidden>
+    <div class="card panel gar">
+      <div class="label">Garage</div>
+      <h2>Pick your car</h2>
+      <p>Same pace, different feel. In a race, the rival whose car you take drives a Shelby in their colours.</p>
+      <div id="gar-list"></div>
+      <div class="label" id="gar-note" style="color:var(--sun);min-height:14px;margin-top:8px"></div>
+      <div class="row"><button class="btn primary" id="gar-done">Done</button></div>
+    </div>
+  </div>
+  <div id="online" class="overlay" hidden>
+    <div class="card panel onl">
+      <div class="label">Online</div>
+      <h2>Drive with friends</h2>
+      <p id="on-intro">Make a room and send your friends the invite link or the code: up to 6 drivers, each in their own car. When anyone starts a sprint from a race marker, the whole room races it.</p>
+      <label class="sl on-nm" for="on-name"><span>Your name</span><input id="on-name" type="text" maxlength="16" autocomplete="off" spellcheck="false"></label>
+      <div id="on-start">
+        <div class="row"><button class="btn primary" id="on-create">Make a room</button></div>
+        <div class="row on-join"><input id="on-code" type="text" maxlength="5" placeholder="Room code" autocomplete="off" spellcheck="false"><button class="btn ghost" id="on-join">Join</button></div>
+      </div>
+      <div id="on-room" hidden>
+        <div class="on-codebox"><span class="label">Room code</span><b id="on-codev">-----</b><button class="btn ghost small" id="on-copy">Copy invite link</button></div>
+        <div class="label" style="margin-top:12px">Drivers</div>
+        <div id="on-players"></div>
+        <div class="row"><button class="btn ghost small" id="on-leave">Leave room</button></div>
+      </div>
+      <div class="label" id="on-status" style="color:var(--sun);min-height:14px;margin-top:10px;text-transform:none;letter-spacing:.02em;font-size:13px"></div>
+      <div class="row"><button class="btn primary" id="on-done">Back to driving</button></div>
     </div>
   </div>
   <div id="controls" class="overlay" hidden>
@@ -490,5 +546,5 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=89b81c823d"></script>
+<script type="module" src="game.js?v=2a325760e8"></script>
 </body></html>
