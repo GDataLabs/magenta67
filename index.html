@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="92076d2815"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="89b81c823d"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>
 
 <meta name="theme-color" content="#14213d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -282,6 +282,29 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 .res tr.you td { color: var(--sun); font-weight: 800; }
 .res td.t { text-align: right; }
 .bigpos { font-family: var(--f-display); font-size: 64px; line-height: 1; color: var(--sun); text-shadow: 0 4px 0 var(--magenta); }
+/* v14.3: volume sliders, the Controls screen, controller focus in menus */
+.sliders { display: grid; gap: 8px; margin-top: 8px; }
+.sl { display: grid; grid-template-columns: 116px minmax(0, 1fr) 46px; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 10px; background: rgba(255,244,224,.06); font-weight: 800; font-size: 14px; }
+.sl b { text-align: right; font-variant-numeric: tabular-nums; }
+.sl input[type=range] { width: 100%; accent-color: var(--magenta-hi); height: 26px; margin: 0; }
+#controls { z-index: 40; }
+.ctl { width: min(680px, 100%); }
+.ctl-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.ctl .tg { text-align: left; border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+.ctl .tg b { display: block; font-size: 15px; }
+.ctl-head, #ctl-rows .cr { display: grid; grid-template-columns: minmax(110px, 1.2fr) repeat(4, minmax(64px, 1fr)); gap: 6px; align-items: center; }
+.ctl-head { grid-template-columns: minmax(110px, 1.2fr) minmax(134px, 2fr) minmax(134px, 2fr); margin-bottom: 4px; }
+#ctl-rows { display: grid; gap: 5px; }
+#ctl-rows .cr .nm { font-weight: 800; font-size: 14px; }
+#ctl-rows button { border: 1px solid var(--glass-line); background: rgba(255,244,224,.07); border-radius: 8px; padding: 7px 6px; font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ctl-rows button.empty { color: var(--muted); font-weight: 600; }
+#ctl-rows .cr button:nth-of-type(2) { margin-right: 8px; }
+#ctl-cap { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(20,33,61,.62); padding-inline: 16px; }
+#ctl-cap[hidden] { display: none; }
+#ctl-cap .panel { padding: 18px 20px; max-width: 420px; text-align: center; background: var(--ink-2); }
+#ctl-cap b { font-size: 18px; } #ctl-cap p { margin: 8px 0 0; color: var(--muted); } #ctl-cap .row { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun); outline-offset: 2px; }
+@media (max-width: 560px) { .sl { grid-template-columns: 92px minmax(0, 1fr) 42px; } #ctl-rows .cr, .ctl-head { grid-template-columns: minmax(84px, 1fr) repeat(4, minmax(52px, 1fr)); } .ctl-head { grid-template-columns: minmax(84px, 1fr) 2fr 2fr; } #ctl-rows button { font-size: 12px; padding: 7px 3px; } }
 .toggles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
 .toggles button { text-align: left; border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .toggles button b { display: block; font-size: 15px; font-stretch: 108%; }
@@ -353,6 +376,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
       <div class="row">
         <button class="btn primary" id="b-start">Start driving</button>
         <button class="btn ghost" id="b-howto">How to drive</button>
+        <button class="btn ghost" id="b-controls">Controls</button>
       </div>
       <button class="btn small ghost" id="b-fsios" hidden>Play full screen on iPhone</button>
       <div id="howto" class="panel" hidden>
@@ -370,6 +394,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
           <tr><td>Reset car</td><td><kbd>R</kbd> · gamepad <kbd>X</kbd></td></tr>
           <tr><td>Horn · Mute</td><td><kbd>H</kbd> · gamepad <kbd>L3</kbd> · <kbd>M</kbd></td></tr>
           <tr><td>Pause</td><td><kbd>Esc</kbd> · gamepad <kbd>Start</kbd></td></tr>
+          <tr><td>Change controls</td><td>The Controls button here or in the pause menu: pick any action and press the button or key you want for it. Menus work with a controller too: D-pad to move, <kbd>A</kbd> to pick, <kbd>B</kbd> back, <kbd>LB</kbd> / <kbd>RB</kbd> for the pause-menu tabs</td></tr>
           <tr><td>Light · Weather</td><td>Pause menu: golden hour, afternoon, sunset, night · clear, fog, rain</td></tr>
           <tr><td>Phone</td><td>On-screen pedals and steering appear automatically</td></tr>
         </table>
@@ -386,7 +411,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <button class="btn ghost" id="p-restart" hidden>Restart race</button>
         <button class="btn ghost" id="p-quit" hidden>Quit race</button>
       </div>
-      <div class="tabs"><button id="pt-map" class="on">Map</button><button id="pt-drive">Sprints &amp; settings</button><button id="pt-champ">Championship</button><button id="pt-rec">Records</button></div>
+      <div class="tabs"><button id="pt-map" class="on">Map</button><button id="pt-drive">Settings &amp; sprints</button><button id="pt-champ">Championship</button><button id="pt-rec">Records</button></div>
       <div id="ps-map">
         <canvas id="wmap" width="1024" height="1024" aria-label="Map of the whole world"></canvas>
         <div class="label wmap-hint" id="wmap-hint">Tap a pink flag to drive to that sprint</div>
@@ -405,12 +430,15 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <table class="res" id="rec-table"></table>
       </div>
       <div id="ps-drive" hidden>
-      <div class="label" style="margin-top:12px">Sprints</div>
-      <div class="racelist" id="p-races"></div>
+      <div class="label" style="margin-top:12px">Volume</div>
+      <div class="sliders">
+        <label class="sl" for="p-musicvol"><span>Music</span><input type="range" id="p-musicvol" min="0" max="100" step="5" value="100"><b id="p-musicvol-v">100%</b></label>
+        <label class="sl" for="p-sfxvol"><span>Sound effects</span><input type="range" id="p-sfxvol" min="0" max="100" step="5" value="100"><b id="p-sfxvol-v">100%</b></label>
+      </div>
       <div class="toggles">
+        <button id="p-controls"><span class="label">Controls</span><b>Change buttons</b></button>
         <button id="p-cam"><span class="label">Camera</span><b id="p-cam-v">Chase</b></button>
         <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
-        <button id="p-music"><span class="label">Music</span><b id="p-music-v">On</b></button>
         <button id="p-turbo"><span class="label">Turbo sound</span><b id="p-turbo-v">On</b></button>
         <button id="p-fs"><span class="label">Full screen</span><b id="p-fs-v">Off</b></button>
         <button id="p-gfx"><span class="label">Graphics</span><b id="p-gfx-v">High</b></button>
@@ -421,6 +449,8 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
         <button id="p-ghost"><span class="label">Ghost of your best</span><b id="p-ghost-v">On</b></button>
         <button id="p-mirror"><span class="label">Rear-view mirror</span><b id="p-mirror-v">On</b></button>
       </div>
+      <div class="label" style="margin-top:16px">Sprints</div>
+      <div class="racelist" id="p-races"></div>
       </div>
     </div>
   </div>
@@ -444,8 +474,21 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
       <div class="row"><button class="btn primary" id="rs-next" hidden>Next round</button><button class="btn primary" id="rs-again">Race again</button><button class="btn ghost" id="rs-replay">Watch replay</button><button class="btn ghost" id="rs-ups" hidden>Upgrades</button><button class="btn ghost" id="rs-free">Free roam</button></div>
     </div>
   </div>
+  <div id="controls" class="overlay" hidden>
+    <div class="card panel ctl">
+      <div class="label">Controls</div>
+      <h2>Change the buttons</h2>
+      <p>Pick a slot, then press the controller button or keyboard key you want for it. Each action can have two of each. A button already in use moves over to its new job.</p>
+      <div class="ctl-top"><span class="label" id="ctl-pad">No controller found yet</span><button id="ctl-stick" class="tg"><span class="label">Steering stick</span><b id="ctl-stick-v">Left stick</b></button></div>
+      <div class="ctl-head"><span></span><span class="label">Controller</span><span class="label">Keyboard</span></div>
+      <div id="ctl-rows"></div>
+      <div class="label" id="ctl-note" style="color:var(--sun);min-height:14px;margin-top:8px"></div>
+      <div class="row"><button class="btn primary" id="ctl-done">Done</button><button class="btn ghost" id="ctl-reset">Reset to defaults</button></div>
+    </div>
+    <div id="ctl-cap" hidden><div class="panel"><b id="ctl-cap-t">Press a button</b><p id="ctl-cap-h"></p><div class="row"><button class="btn ghost small" id="ctl-clear">Clear this slot</button><button class="btn ghost small" id="ctl-cancel">Cancel</button></div></div></div>
+  </div>
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=92076d2815"></script>
+<script type="module" src="game.js?v=89b81c823d"></script>
 </body></html>
