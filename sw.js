@@ -5,7 +5,7 @@
 //  - everything else on this site: the saved copy first, else the network (and saved for next time)
 //  - other sites (online play's server, anything else): left alone
 //  - a new build = a new sw.js = a new cache; the old one is deleted once the new one is ready
-const BUILD = '9138397bfd-c0898cda';
+const BUILD = 'e7cddeadaf-f864ad4c';
 const CACHE = 'm67-' + BUILD;
 const PRECACHE = [
  "./",
@@ -67,7 +67,7 @@ const PRECACHE = [
  "assets/moon_albedo.jpg",
  "assets/moon_height.jpg",
  "assets/peerjs.min.js",
- "assets/rival.json?v=a497d977",
+ "assets/rival.json?v=a470ce34",
  "assets/rival_longnose_map.webp",
  "assets/rival_longnose_mask.webp",
  "assets/rival_longnose_nrm.webp",
@@ -90,7 +90,7 @@ const PRECACHE = [
  "assets/rival_sting_orm.webp",
  "assets/three.module.min.js",
  "favicon.png",
- "game.js?v=9138397bfd",
+ "game.js?v=e7cddeadaf",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
