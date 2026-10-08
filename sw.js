@@ -6,7 +6,7 @@
 //  - other sites (online play's server, anything else): left alone
 //  - api/ (v16.0, Build my car): network only, except finished cars (api/car/geo), kept in 'm67cars-1'
 //  - a new build = a new sw.js = a new cache; the old one is deleted once the new one is ready
-const BUILD = 'b81a6afb45-a00f068d';
+const BUILD = '94f327a41f-7709021f';
 const CACHE = 'm67-' + BUILD;
 const CARS = 'm67cars-1'; // (players' own cars: not tied to a build, so a new version of the game keeps them)
 const PRECACHE = [
@@ -92,7 +92,7 @@ const PRECACHE = [
  "assets/rival_sting_orm.webp",
  "assets/three.module.min.js",
  "favicon.png",
- "game.js?v=b81a6afb45",
+ "game.js?v=94f327a41f",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
