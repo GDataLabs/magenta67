@@ -5,7 +5,7 @@
 //  - everything else on this site: the saved copy first, else the network (and saved for next time)
 //  - other sites (online play's server, anything else): left alone
 //  - a new build = a new sw.js = a new cache; the old one is deleted once the new one is ready
-const BUILD = 'c1c326819e-703babfd';
+const BUILD = '94870e5a2e-5c1b63f5';
 const CACHE = 'm67-' + BUILD;
 const PRECACHE = [
  "./",
@@ -86,7 +86,7 @@ const PRECACHE = [
  "assets/rival_sting_orm.webp",
  "assets/three.module.min.js",
  "favicon.png",
- "game.js?v=c1c326819e",
+ "game.js?v=94870e5a2e",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
