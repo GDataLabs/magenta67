@@ -1,0 +1,13 @@
+{
+  "name": "magenta67-site",
+  "private": true,
+  "description": "Magenta '67 web game: static files plus the Build my car functions in api/",
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "dependencies": {
+    "@vercel/blob": "^2.0.0",
+    "meshoptimizer": "0.18.1",
+    "meshopt-simplifier": "npm:meshoptimizer@1.3.0",
+    "sharp": "^0.35.5"
+  }
+}

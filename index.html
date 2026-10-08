@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="e7cddeadaf"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {}));</script></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="b81a6afb45"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {}));</script></head><body>
 
 <meta name="theme-color" content="#14213d">
 <style>
@@ -297,6 +297,35 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 #gar-list .bars b { display: flex; gap: 3px; } #gar-list .bars i { display: block; width: 14px; height: 6px; border-radius: 3px; background: rgba(255,244,224,.16); } #gar-list .bars i.on { background: var(--sun); }
 #gar-list .tag { margin-top: 6px; font-weight: 800; font-size: 13px; color: var(--sun); }
 .onl { width: min(560px, 100%); }
+/* v16.0: Build my car / Edit my car, friends' own cars */
+#studio { z-index: 42; }
+.stu { width: min(620px, 100%); }
+#gar-list .gc.mine .gbtns { display: flex; gap: 8px; margin-top: 8px; } #gar-list .gc.mine .gbtns .btn { flex: 1; }
+#gar-list .gc.pend { opacity: .8; border-style: dashed; }
+#gar-list .gc.build { border-style: dashed; justify-content: center; text-align: center; align-items: center; min-height: 150px; color: var(--cream); }
+#gar-list .gc.build .plus { font-family: var(--f-display); font-size: 40px; line-height: 1; color: var(--sun); }
+.stu-shots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stu-shots .shot { position: relative; aspect-ratio: 4 / 3; border-radius: 10px; border: 1.5px dashed var(--glass-line); background: rgba(255,244,224,.06); color: var(--cream); display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: 6px 8px; overflow: hidden; font-weight: 800; font-size: 13px; text-align: left; }
+.stu-shots .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.stu-shots .shot span, .stu-shots .shot i { position: relative; text-shadow: 0 1px 3px rgba(0,0,0,.8); } .stu-shots .shot i { font-style: normal; font-size: 11px; color: var(--sun); font-weight: 700; }
+.stu-shots .shot.got { border-style: solid; border-color: var(--magenta-hi); }
+.stu-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 8px; } .stu-kinds .label { margin-right: 4px; }
+.chip { border: 1.5px solid var(--glass-line); background: transparent; color: var(--cream); border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 13px; }
+.chip.on { background: var(--magenta); border-color: var(--magenta); color: #fff; }
+.stu-in { grid-template-columns: 116px minmax(0, 1fr); margin-top: 6px; }
+.stu input[type=text] { font: inherit; font-weight: 800; font-size: 15px; color: var(--cream); background: rgba(255,244,224,.08); border: 1px solid var(--glass-line); border-radius: 8px; padding: 8px 10px; min-width: 0; -webkit-user-select: text; user-select: text; }
+.stu-ask { display: flex; gap: 8px; } .stu-ask input { flex: 1; }
+#stu-reply { min-height: 20px; margin-top: 8px; color: var(--cream); font-size: 14px; line-height: 1.4; }
+.stu-bar { height: 10px; border-radius: 5px; background: rgba(255,244,224,.12); overflow: hidden; margin: 6px 0 14px; } .stu-bar i { display: block; height: 100%; width: 2%; background: var(--magenta-hi); transition: width .6s ease; }
+#stu-hist { display: grid; gap: 6px; margin-top: 6px; max-height: 210px; overflow: auto; }
+#stu-hist .hv { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: rgba(255,244,224,.06); font-size: 13px; }
+#stu-hist .hv.on { background: rgba(224,24,110,.16); } #stu-hist .hv b { color: var(--sun); } #stu-hist .hv span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cream); } #stu-hist .hv em { font-style: normal; color: var(--sun); font-weight: 800; font-size: 12px; }
+.stu-note { color: var(--sun) !important; min-height: 14px; margin-top: 10px; text-transform: none !important; letter-spacing: .02em !important; font-size: 13px !important; } .stu-note.bad { color: #ff9a9a !important; }
+#cc-ask { position: absolute; z-index: 45; top: 14px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; font-weight: 700; font-size: 14px; color: var(--cream); }
+#cc-ask #cc-ask-t { flex: 1 1 220px; } #cc-ask .cc-b { display: flex; gap: 8px; }
+.on-ccp { display: block; width: 100%; text-align: left; border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 10px; padding: 8px 12px; margin-top: 12px; color: var(--cream); } .on-ccp b { display: block; font-size: 15px; }
+#on-players .op .btn { flex: none; }
+@media (max-width: 560px) { .stu-shots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .on-nm { grid-template-columns: 116px minmax(0, 1fr); }
 .onl input[type=text] { font: inherit; font-weight: 800; font-size: 15px; color: var(--cream); background: rgba(255,244,224,.08); border: 1px solid var(--glass-line); border-radius: 8px; padding: 8px 10px; min-width: 0; -webkit-user-select: text; user-select: text; }
 .on-join input { width: 9em; text-transform: uppercase; letter-spacing: .2em; }
@@ -507,12 +536,44 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
     <div class="card panel gar">
       <div class="label">Garage</div>
       <h2>Pick your car</h2>
-      <p>The rivals' cars: same pace, different feel. Ty's Nova is the quickest of all; Dev's truck rules the dirt. In a race, the rival whose car you take drives a Shelby in their colours.</p>
+      <p>The rivals' cars: same pace, different feel. Ty's Nova is the quickest of all; Dev's truck rules the dirt. In a race, the rival whose car you take drives a Shelby in their colours. Or build your own from photos.</p>
       <div id="gar-list"></div>
       <div class="label" id="gar-note" style="color:var(--sun);min-height:14px;margin-top:8px"></div>
       <div class="row"><button class="btn primary" id="gar-done">Done</button></div>
     </div>
   </div>
+  <div id="studio" class="overlay" hidden>
+    <div class="card panel stu">
+      <div class="label" id="stu-label">Build my car</div>
+      <h2 id="stu-title">Build my car</h2>
+      <section id="stu-build">
+        <p>Take photos of your car: the front, both sides and the back (the front and at least one more). The whole car in each, from about head height, in daylight, with nothing in front of it. They're only used to make your car, and stay private.</p>
+        <div id="stu-shots" class="stu-shots"></div>
+        <input type="file" id="stu-file" accept="image/*" hidden>
+        <div class="stu-kinds" id="stu-kinds"><span class="label">What is it?</span><button class="chip" data-size="sports">Sports car</button><button class="chip" data-size="car">Car</button><button class="chip" data-size="suv">SUV or van</button><button class="chip" data-size="truck">Pickup truck</button></div>
+        <label class="sl stu-in" for="stu-name"><span>Its name</span><input id="stu-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="e.g. Red Rocket"></label>
+        <label class="sl stu-in" for="stu-code"><span>Invite code</span><input id="stu-code" type="text" maxlength="24" autocomplete="off" spellcheck="false"></label>
+        <div class="row"><button class="btn primary" id="stu-go">Build it</button><button class="btn ghost" id="stu-cancel">Back</button></div>
+      </section>
+      <section id="stu-prog" hidden>
+        <p id="stu-pmsg"></p>
+        <div class="stu-bar"><i id="stu-pbar"></i></div>
+        <p>This takes a few minutes. You can close this and keep driving: your car shows up in the Garage when it's ready.</p>
+        <div class="row"><button class="btn primary" id="stu-pedit" hidden>Edit it</button><button class="btn ghost" id="stu-pdone">Keep driving</button></div>
+      </section>
+      <section id="stu-edit" hidden>
+        <p id="stu-esub"></p>
+        <div class="stu-ask"><input id="stu-text" type="text" maxlength="300" autocomplete="off" placeholder="e.g. paint it dark blue with black wheels, and lower it"><button class="btn primary small" id="stu-send">Change it</button></div>
+        <div id="stu-reply"></div>
+        <div class="row"><button class="btn ghost small" id="stu-undo">Undo</button><button class="btn ghost small" id="stu-again">Build it again</button></div>
+        <div class="label" style="margin-top:14px">Versions</div>
+        <div id="stu-hist"></div>
+        <div class="row"><button class="btn primary" id="stu-edone">Done</button></div>
+      </section>
+      <div class="label stu-note" id="stu-note"></div>
+    </div>
+  </div>
+  <div id="cc-ask" class="panel" hidden><span id="cc-ask-t"></span><span class="cc-b"><button class="btn small primary" id="cc-ask-y">Show</button><button class="btn small ghost" id="cc-ask-n">No thanks</button></span></div>
   <div id="online" class="overlay" hidden>
     <div class="card panel onl">
       <div class="label">Online</div>
@@ -525,6 +586,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       </div>
       <div id="on-room" hidden>
         <div class="on-codebox"><span class="label">Room code</span><b id="on-codev">-----</b><button class="btn ghost small" id="on-copy">Copy invite link</button></div>
+        <button class="tg on-ccp" id="on-ccp"><span class="label">Friends' own cars</span><b id="on-ccp-v">Ask first</b></button>
         <div class="label" style="margin-top:12px">Drivers</div>
         <div id="on-players"></div>
         <div class="row"><button class="btn ghost small" id="on-leave">Leave room</button></div>
@@ -549,5 +611,5 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=e7cddeadaf"></script>
+<script type="module" src="game.js?v=b81a6afb45"></script>
 </body></html>

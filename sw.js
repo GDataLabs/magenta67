@@ -4,9 +4,11 @@
 //  - the page: network first (so a new version shows as soon as you're online; 4 s at most), the saved copy offline
 //  - everything else on this site: the saved copy first, else the network (and saved for next time)
 //  - other sites (online play's server, anything else): left alone
+//  - api/ (v16.0, Build my car): network only, except finished cars (api/car/geo), kept in 'm67cars-1'
 //  - a new build = a new sw.js = a new cache; the old one is deleted once the new one is ready
-const BUILD = 'e7cddeadaf-f864ad4c';
+const BUILD = 'b81a6afb45-a00f068d';
 const CACHE = 'm67-' + BUILD;
+const CARS = 'm67cars-1'; // (players' own cars: not tied to a build, so a new version of the game keeps them)
 const PRECACHE = [
  "./",
  "apple-touch-icon.png",
@@ -90,7 +92,7 @@ const PRECACHE = [
  "assets/rival_sting_orm.webp",
  "assets/three.module.min.js",
  "favicon.png",
- "game.js?v=e7cddeadaf",
+ "game.js?v=b81a6afb45",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
@@ -157,6 +159,18 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   const root = new URL('./', self.registration.scope).pathname;
+  // v16.0 Build my car: the site's functions go straight to the network (never kept), except a finished car's shape
+  // (api/car/geo, which never changes): kept in its own cache so your car still drives offline
+  if (url.pathname.startsWith(root + 'api/')) {
+    if (url.pathname === root + 'api/car/geo' && /^[a-z2-7]{16}$/.test(url.searchParams.get('id') || '')) e.respondWith((async () => {
+      const c = await caches.open(CARS), hit = await c.match(req);
+      if (hit) return hit;
+      const r = await fetch(req);
+      if (r.status === 200 && (r.headers.get('content-type') || '').includes('application/json')) c.put(req, r.clone());
+      return r;
+    })());
+    return;
+  }
   if (req.mode === 'navigate' && (url.pathname === root || url.pathname === root + 'index.html')) {   // (the game's page only: not e.g. preview.jpg opened on its own)
     e.respondWith((async () => {
       const c = await caches.open(CACHE);

@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/car/status.js": { "maxDuration": 60 },
+    "api/car/edit.js": { "maxDuration": 60 },
+    "api/car/start.js": { "maxDuration": 45 }
+  },
   "headers": [
     {
       "source": "/sfx/(.*)",
