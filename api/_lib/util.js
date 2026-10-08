@@ -13,6 +13,11 @@ export function send(res, status, obj, extra = {}) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.end(typeof obj === 'string' ? obj : JSON.stringify(obj));
 }
+// every function answers in JSON even when something breaks (and the reason goes to the Vercel logs)
+export const guard = (fn) => async (req, res) => {
+  try { await fn(req, res); }
+  catch (e) { console.error('[m67]', e); if (!res.headersSent) send(res, 500, { ok: false, error: 'Something went wrong on the game site. Please try again in a bit.', detail: String(e && e.message || e).slice(0, 300) }); }
+};
 export function preflight(req, res) { if (req.method === 'OPTIONS') { send(res, 204, ''); return true; } return false; }
 export const fail = (res, status, msg) => send(res, status, { ok: false, error: msg });
 

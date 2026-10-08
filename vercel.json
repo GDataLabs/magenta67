@@ -1,8 +1,9 @@
 {
   "functions": {
-    "api/car/status.js": { "maxDuration": 60 },
-    "api/car/edit.js": { "maxDuration": 60 },
-    "api/car/start.js": { "maxDuration": 45 }
+    "api/car/status.js": { "maxDuration": 60, "includeFiles": "node_modules/@img/sharp-*linux-x64/**" },
+    "api/car/edit.js": { "maxDuration": 60, "includeFiles": "node_modules/@img/sharp-*linux-x64/**" },
+    "api/car/start.js": { "maxDuration": 45, "includeFiles": "node_modules/@img/sharp-*linux-x64/**" },
+    "api/car/info.js": { "includeFiles": "node_modules/@img/sharp-*linux-x64/**" }
   },
   "headers": [
     {

@@ -1,11 +1,11 @@
 // POST api/car/start : { code, name, owner, size, photos: { front, left?, back?, right? } (data: URLs) }
 // -> { id, key } : the key (kept on the player's device) is what lets them edit the car later.
-import { send, fail, preflight, body, newId, newKey, sha, cleanText } from '../_lib/util.js';
+import { send, fail, preflight, body, newId, newKey, sha, cleanText, guard } from '../_lib/util.js';
 import { configured, putBuf } from '../_lib/store.js';
 import { VIEWS, useInvite, refundInvite, cleanPhoto, startJob, providerReady, saveMeta } from '../_lib/cars.js';
 import { SIZE_LEN } from '../_lib/settings.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (preflight(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'POST only');
   if (!providerReady() || !configured()) return fail(res, 503, "Car building isn't switched on yet.");
@@ -32,3 +32,4 @@ export default async function handler(req, res) {
     fail(res, 502, "Couldn't start the 3D step. Please try again in a bit.");
   }
 }
+export default guard(handler);

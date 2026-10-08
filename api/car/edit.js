@@ -3,12 +3,12 @@
 //   { id, key, use: v }            go back (or forward) to version v (Undo, and the history list)
 //   { id, key, rename: 'name' }
 //   { id, key, rebuild: true, photos?: {...} }   Build it again (new photos optional): uses one build from the invite code
-import { send, fail, preflight, body, ID_RE, KEY_RE, cleanText, today } from '../_lib/util.js';
+import { send, fail, preflight, body, ID_RE, KEY_RE, cleanText, today, guard } from '../_lib/util.js';
 import { getJSON, putJSON, putBuf } from '../_lib/store.js';
 import { loadMeta, saveMeta, keyOk, publicMeta, makeGeo, addVersion, useInvite, refundInvite, cleanPhoto, startJob, inviteLeft, VIEWS } from '../_lib/cars.js';
 import { clean, rules, ai, sameGeo, defaults } from '../_lib/settings.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (preflight(req, res)) return;
   if (req.method !== 'POST') return fail(res, 405, 'POST only');
   let b; try { b = await body(req); } catch { return fail(res, 400, 'Too big'); }
@@ -61,3 +61,4 @@ export default async function handler(req, res) {
   await saveMeta(m);
   send(res, 200, { ok: true, changed: true, reply: r.reply, rebuild: !!r.rebuild, version: m.cur, meta: publicMeta(m), by: r.by, left: await inviteLeft(m.codeHash) });
 }
+export default guard(handler);

@@ -1,10 +1,19 @@
 // A player's car on the server (v16.0): its record (cars/<id>/meta.json), photos, the 3D service's raw models and the
 // finished game data (cars/<id>/geo-<n>.json), plus the invite-code counters.
-import sharp from 'sharp';
 import crypto from 'node:crypto';
 import { getJSON, putJSON, getBuf, putBuf } from './store.js';
 import { submit, poll, fetchModel, fetchPreview, which } from './provider.js';
-import { bakeCar } from './carbake.js';
+// (the image library and the car bake are loaded only when a car is being made, so the light functions (info, meta)
+// never depend on them; engineCheck() reports whether they load on this server)
+let _sharp = null;
+export const getSharp = async () => _sharp || (_sharp = (await import('sharp')).default);
+const bakeCar = async (glb, o) => (await import('./carbake.js')).bakeCar(glb, o);
+export async function engineCheck() {
+  const out = { node: process.version };
+  try { const s = await getSharp(); out.images = 'ok ' + s.versions.sharp; } catch (e) { out.images = 'error: ' + String(e && e.message || e).slice(0, 400); }
+  try { await import('./carbake.js'); out.bake = 'ok'; } catch (e) { out.bake = 'error: ' + String(e && e.message || e).slice(0, 400); }
+  return out;
+}
 import { defaults, clean } from './settings.js';
 import { invites, codeHash, today, sha, safeEq } from './util.js';
 
@@ -45,7 +54,7 @@ export async function cleanPhoto(dataUrl) {
   const buf = Buffer.from(m[2], 'base64'); if (buf.length > 3.2e6) throw new Error('A photo is too big.');
   const sig = buf.subarray(0, 12).toString('hex');
   if (!(sig.startsWith('ffd8ff') || sig.startsWith('89504e47') || (sig.startsWith('52494646') && buf.subarray(8, 12).toString() === 'WEBP'))) throw new Error("A photo isn't a picture file.");
-  const img = sharp(buf, { limitInputPixels: 40e6 }).rotate();
+  const sharp = await getSharp(), img = sharp(buf, { limitInputPixels: 40e6 }).rotate();
   const md = await img.metadata(); if (!md.width || md.width < 200 || md.height < 200) throw new Error('A photo is too small (at least 200 pixels).');
   return img.resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).jpeg({ quality: 88 }).toBuffer();
 }
@@ -81,7 +90,7 @@ export async function advance(m) {
 async function finish(m, n, previewUrl) {
   m.procAt = Date.now(); m.state = 'processing';
   try {
-    if (previewUrl && !m.preview) { const pv = await fetchPreview(previewUrl); if (pv) m.preview = 'data:image/webp;base64,' + (await sharp(pv).resize(320, 240, { fit: 'cover' }).webp({ quality: 72 }).toBuffer()).toString('base64'); }
+    if (previewUrl && !m.preview) { const pv = await fetchPreview(previewUrl), sharp = await getSharp(); if (pv) m.preview = 'data:image/webp;base64,' + (await sharp(pv).resize(320, 240, { fit: 'cover' }).webp({ quality: 72 }).toBuffer()).toString('base64'); }
     const prev = m.versions && m.versions.length ? m.versions.find(v => v.v === m.cur).settings : defaults(m.size);
     await makeGeo(m, n, prev, m.versions && m.versions.length ? 'Built again' : 'First build');
     m.state = 'ready'; m.msg = 'Ready'; m.progress = 1; m.lastCharge = null; m.job = null; m.photoToken = null; m.rawJob = null;
