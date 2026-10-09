@@ -10,7 +10,10 @@
 //    as WebP data URLs (colour 2048, the rest 1024)
 // Output: the same shape as one RIVAL_HQ_DATA entry, so the game draws it with buildRivalCar().
 import sharp from 'sharp';
-import { MeshoptEncoder } from 'meshoptimizer/meshopt_encoder.module.js';
+// (v16.3: the plain CommonJS file. On Vercel the '.module.js' copy was read as CommonJS, so its named export wasn't found
+// and every build was switched off: "Car building isn't switched on yet")
+import meshoptEnc from 'meshoptimizer/meshopt_encoder.js';
+const MeshoptEncoder = meshoptEnc.MeshoptEncoder || meshoptEnc;
 import { MeshoptSimplifier } from 'meshopt-simplifier/simplifier';
 import { readGLB } from './glb.js';
 
