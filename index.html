@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="70b692d655"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {}));</script></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="bb977bb867"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {}));</script></head><body>
 
 <meta name="theme-color" content="#14213d">
 <style>
@@ -83,6 +83,8 @@ kbd { font-family: var(--f-ui); font-weight: 800; font-size: 11px; background: v
 #prompt .d { font-size: 12px; color: var(--muted); }
 #racehud { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; gap: 6px; align-items: stretch; }
 #racehud .cell { padding: 8px 14px 9px; min-width: 70px; text-align: center; }
+#racehud .team .tf { color: #7dff9a; } #racehud .team .tc { color: #ffb366; } #racehud .team .tl { font-size: 10px; margin-top: 2px; }
+#rs-team { margin: 6px 0 2px; font-weight: 800; color: var(--cream); } #rs-team b { color: var(--sun); }
 #racehud .v { font-weight: 900; font-stretch: 105%; font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.05; }
 #racehud .pos .v { font-family: var(--f-display); font-weight: 400; font-size: 34px; color: var(--sun); }
 #racehud .pos .v small { font-size: 16px; color: var(--cream); }
@@ -249,7 +251,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 .uplist .up { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 10px; background: rgba(255,244,224,.06); }
 .uplist .lv { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--sun); margin-left: 6px; }
 .uplist .d { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
-.uplist .pips { display: flex; gap: 4px; margin-top: 6px; } .uplist .pips i { width: 22px; height: 5px; border-radius: 3px; background: rgba(255,244,224,.15); } .uplist .pips i.on { background: var(--magenta-hi); }
+.uplist .pips { display: flex; gap: 3px; margin-top: 6px; } .uplist .pips i { width: 14px; height: 5px; border-radius: 3px; background: rgba(255,244,224,.15); } .uplist .pips i.on { background: var(--magenta-hi); }
 .uplist button[disabled] { opacity: .5; cursor: default; }
 #ch-winner { margin-top: 10px; color: var(--sun); font-weight: 800; }
 #rs-champ { margin-top: 10px; } #rs-cpts { font-size: 14px; color: var(--cream); margin-bottom: 4px; } #rs-cpts b { color: var(--sun); }
@@ -291,6 +293,8 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 #gar-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 #gar-list .gc { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 4px; border: 1.5px solid var(--glass-line); background: rgba(255,244,224,.06); border-radius: 12px; padding: 12px; }
 #gar-list .gc.sel { border-color: var(--magenta-hi); background: rgba(224,24,110,.16); }
+#gar-list .gc.goldcar { border-color: #e0ad37; background: linear-gradient(160deg, rgba(224,173,55,.22), rgba(255,244,224,.05)); } #gar-list .gc.goldcar .nm { color: #ffd36b; }
+#gar-list .gc.locked { opacity: .62; } #gar-list .gc.locked .tag { color: #ffd36b; }
 #gar-list .nm { font-weight: 900; font-size: 16px; font-stretch: 108%; } #gar-list .sub { font-size: 12px; color: var(--muted); }
 #gar-list .bl { font-size: 13px; line-height: 1.35; color: var(--cream); margin: 4px 0 2px; min-height: 52px; }
 #gar-list .bars { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -309,6 +313,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 .stu-shots .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .stu-shots .shot span, .stu-shots .shot i { position: relative; text-shadow: 0 1px 3px rgba(0,0,0,.8); } .stu-shots .shot i { font-style: normal; font-size: 11px; color: var(--sun); font-weight: 700; }
 .stu-shots .shot.got { border-style: solid; border-color: var(--magenta-hi); }
+.stu-shots.drop .shot { border-color: var(--sun); } .stu-shots .shot.drop { border-style: solid; border-color: var(--sun); background: rgba(255,196,80,.2); box-shadow: 0 0 0 3px rgba(255,196,80,.4); }
 .stu-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 8px; } .stu-kinds .label { margin-right: 4px; }
 .chip { border: 1.5px solid var(--glass-line); background: transparent; color: var(--cream); border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 13px; }
 .chip.on { background: var(--magenta); border-color: var(--magenta); color: #fff; }
@@ -324,7 +329,7 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 #cc-ask { position: absolute; z-index: 45; top: 14px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; font-weight: 700; font-size: 14px; color: var(--cream); }
 #cc-ask #cc-ask-t { flex: 1 1 220px; } #cc-ask .cc-b { display: flex; gap: 8px; }
 .on-ccp { display: block; width: 100%; text-align: left; border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 10px; padding: 8px 12px; margin-top: 12px; color: var(--cream); } .on-ccp b { display: block; font-size: 15px; }
-#on-players .op .btn { flex: none; }
+#on-players .op .btn { flex: none; } #on-players .op .net { font-size: 12px; white-space: nowrap; } #on-players .op .net.slow { color: #ff8a65; font-weight: 700; }
 @media (max-width: 560px) { .stu-shots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .on-nm { grid-template-columns: 116px minmax(0, 1fr); }
 .onl input[type=text] { font: inherit; font-weight: 800; font-size: 15px; color: var(--cream); background: rgba(255,244,224,.08); border: 1px solid var(--glass-line); border-radius: 8px; padding: 8px 10px; min-width: 0; -webkit-user-select: text; user-select: text; }
@@ -376,6 +381,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <div class="cell panel pos"><div class="label">Pos</div><div class="v" id="rh-pos">4<small>/4</small></div></div>
       <div class="cell panel"><div class="label">Time</div><div class="v" id="rh-time">0:00.00</div></div>
       <div class="cell panel"><div class="label">Gate</div><div class="v" id="rh-gate">0/0</div></div>
+      <div class="cell panel team" id="rh-team" hidden><div class="label">Team race</div><div class="v"><span class="tf" id="rh-tf">0</span> <small>–</small> <span class="tc" id="rh-tc">0</span></div><div class="label tl">Friends · Computer</div></div>
     </div>
     <div id="arrow" hidden><svg viewBox="0 0 48 48"><path d="M24 4 L42 40 L24 31 L6 40 Z" fill="#ffc845" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/></svg></div>
     <div id="msg"></div>
@@ -423,7 +429,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
     <div class="inner">
       <div class="sub">1967 Shelby GT500 · Open road</div>
       <h1>Magenta '67</h1>
-      <div class="spec"><span><b>428</b> cu in V8</span><span><b>355</b> hp</span><span><b>16</b> sprints</span><span><b>Sky Highway</b> to the Moon</span><span><b>Drive</b> round the Moon</span><span><b>Emerald</b> Caverns</span><span><b>Frozen</b> lake</span><span><b>Volcano</b> &amp; lava tube</span><span><b>Atlantis</b> under the sea</span><span><b>Energy</b> portals</span><span><b>NOS</b> &amp; slipstream</span><span><b>Championship</b> + upgrades</span></div>
+      <div class="spec"><span><b>428</b> cu in V8</span><span><b>355</b> hp</span></div>
       <div class="row">
         <button class="btn primary" id="b-start">Start driving</button>
         <button class="btn ghost" id="b-howto">How to drive</button>
@@ -450,7 +456,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
           <tr><td>Horn · Mute</td><td><kbd>H</kbd> · gamepad <kbd>L3</kbd> · <kbd>M</kbd></td></tr>
           <tr><td>Pause</td><td><kbd>Esc</kbd> · gamepad <kbd>Start</kbd></td></tr>
           <tr><td>Change controls</td><td>The Controls button here or in the pause menu: pick any action and press the button or key you want for it. Menus work with a controller too: D-pad to move, <kbd>A</kbd> to pick, <kbd>B</kbd> back, <kbd>LB</kbd> / <kbd>RB</kbd> for the pause-menu tabs</td></tr>
-          <tr><td>Light · Weather</td><td>Pause menu: golden hour, afternoon, sunset, night · clear, fog, rain</td></tr>
+          <tr><td>Light · Weather</td><td>Pause menu: Auto (the day goes round in about 24 minutes, the weather comes and goes) or hold one: golden hour, afternoon, sunset, night, dawn · clear, fog, rain</td></tr>
           <tr><td>Phone</td><td>On-screen pedals and steering appear automatically</td></tr>
         </table>
       </div>
@@ -467,7 +473,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <button class="btn ghost" id="p-quit" hidden>Quit race</button>
         <button class="btn ghost" id="p-menu">Main menu</button>
       </div>
-      <div class="tabs"><button id="pt-map" class="on">Map</button><button id="pt-drive">Settings &amp; sprints</button><button id="pt-champ">Championship</button><button id="pt-rec">Records</button></div>
+      <div class="tabs"><button id="pt-map" class="on">Map</button><button id="pt-drive">Settings &amp; sprints</button><button id="pt-champ">Championship</button><button id="pt-ups">Upgrades</button><button id="pt-rec">Records</button></div>
       <div id="ps-map">
         <canvas id="wmap" width="1024" height="1024" aria-label="Map of the whole world"></canvas>
         <div class="label wmap-hint" id="wmap-hint">Tap a pink flag to drive to that sprint</div>
@@ -479,7 +485,10 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <div id="ch-winner" hidden></div>
         <div class="row"><button class="btn primary" id="ch-go" hidden>Start round 1</button><button class="btn ghost" id="ch-new">Start the championship</button></div>
         <div class="row"><button class="btn ghost" id="ch-restart" hidden>Restart season</button><button class="btn ghost" id="ch-cancel" hidden>Cancel championship</button></div>
-        <div class="upbar"><div class="label">Upgrades · win points in the championship</div><div><span class="label">Points </span><b id="up-pts">0</b></div></div>
+      </div>
+      <div id="ps-ups" hidden>
+        <div class="upbar"><div class="label">Upgrades · points for wins, podiums, personal bests, the championship and gold snakes</div><div><span class="label">Points </span><b id="up-pts">0</b></div></div>
+        <div class="label" id="up-perf" style="margin:2px 0 8px"></div>
         <div class="uplist" id="up-list"></div>
       </div>
       <div id="ps-rec" hidden>
@@ -501,8 +510,8 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
         <button id="p-fs"><span class="label">Full screen</span><b id="p-fs-v">Off</b></button>
         <button id="p-gfx"><span class="label">Graphics</span><b id="p-gfx-v">High</b></button>
-        <button id="p-tod"><span class="label">Time of day</span><b id="p-tod-v">Golden hour</b></button>
-        <button id="p-wx"><span class="label">Weather</span><b id="p-wx-v">Clear</b></button>
+        <button id="p-tod"><span class="label">Time of day</span><b id="p-tod-v">Auto</b></button>
+        <button id="p-wx"><span class="label">Weather</span><b id="p-wx-v">Auto</b></button>
         <button id="p-tch"><span class="label">Touch controls</span><b id="p-tch-v">Off</b></button>
         <button id="p-steer"><span class="label">Steering</span><b id="p-steer-v">Wheel</b></button>
         <button id="p-ghost"><span class="label">Ghost of your best</span><b id="p-ghost-v">On</b></button>
@@ -522,7 +531,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <div class="label" style="margin-top:12px">Rivals</div>
       <p id="rc-rivals" style="margin-top:4px"></p>
       <p id="rc-online" class="online-note" hidden></p>
-      <div class="row"><button class="btn primary" id="rc-go">Start sprint</button><button class="btn ghost" id="rc-friends" hidden>Friends only</button><button class="btn ghost" id="rc-solo" hidden>Just me vs the rivals</button><button class="btn ghost" id="rc-no">Not now</button></div>
+      <div class="row"><button class="btn primary" id="rc-go">Start sprint</button><button class="btn ghost" id="rc-team" hidden>Team race: friends vs computer</button><button class="btn ghost" id="rc-friends" hidden>Friends only</button><button class="btn ghost" id="rc-solo" hidden>Just me vs the rivals</button><button class="btn ghost" id="rc-no">Not now</button></div>
     </div>
   </div>
   <div id="results" class="overlay" hidden>
@@ -530,6 +539,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <div class="label" id="rs-name">Sprint finished</div>
       <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"><div class="bigpos" id="rs-pos">1st</div><div style="padding-bottom:8px"><div class="label">Your time</div><div style="font-size:24px;font-weight:900;font-variant-numeric:tabular-nums" id="rs-time">0:00.00</div><div class="label" id="rs-best" style="color:var(--sun)"></div></div></div>
       <table class="res" id="rs-table"></table>
+      <div id="rs-team" hidden></div>
       <div id="rs-champ" hidden><div class="label" style="margin-top:6px">Championship standings</div><div id="rs-cpts"></div><table class="res" id="rs-ctable"></table></div>
       <div class="row"><button class="btn primary" id="rs-next" hidden>Next round</button><button class="btn primary" id="rs-again">Race again</button><button class="btn ghost" id="rs-replay">Watch replay</button><button class="btn ghost" id="rs-ups" hidden>Upgrades</button><button class="btn ghost" id="rs-free">Free roam</button></div>
     </div>
@@ -549,9 +559,9 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <div class="label" id="stu-label">Build my car</div>
       <h2 id="stu-title">Build my car</h2>
       <section id="stu-build">
-        <p>Take photos of your car: the front, both sides and the back (the front and at least one more). The whole car in each, from about head height, in daylight, with nothing in front of it. They're only used to make your car, and stay private.</p>
+        <p>Take photos of your car: the front, both sides and the back (the front and at least one more). The whole car in each, from about head height, in daylight, with nothing in front of it. Click a box to choose a photo, or drag photos onto the boxes from your Downloads or Photos. They're only used to make your car, and stay private.</p>
         <div id="stu-shots" class="stu-shots"></div>
-        <input type="file" id="stu-file" accept="image/*" hidden>
+        <input type="file" id="stu-file" accept="image/*,.heic,.heif" multiple hidden>
         <div class="stu-kinds" id="stu-kinds"><span class="label">What is it?</span><button class="chip" data-size="sports">Sports car</button><button class="chip" data-size="car">Car</button><button class="chip" data-size="suv">SUV or van</button><button class="chip" data-size="truck">Pickup truck</button></div>
         <label class="sl stu-in" for="stu-name"><span>Its name</span><input id="stu-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="e.g. Red Rocket"></label>
         <label class="sl stu-in" for="stu-code"><span>Invite code</span><input id="stu-code" type="text" maxlength="24" autocomplete="off" spellcheck="false"></label>
@@ -613,5 +623,5 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=70b692d655"></script>
+<script type="module" src="game.js?v=bb977bb867"></script>
 </body></html>
