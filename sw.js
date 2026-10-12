@@ -6,7 +6,7 @@
 //  - other sites (online play's server, anything else): left alone
 //  - api/ (v16.0, Build my car): network only, except finished cars (api/car/geo), kept in 'm67cars-1'
 //  - a new build = a new sw.js = a new cache; the old one is deleted once the new one is ready
-const BUILD = '2bc1ab2d3c-dc9f4f43';
+const BUILD = '3946c0cad9-5225aeac';
 const CACHE = 'm67-' + BUILD;
 const CARS = 'm67cars-1'; // (players' own cars: not tied to a build, so a new version of the game keeps them)
 const PRECACHE = [
@@ -69,11 +69,15 @@ const PRECACHE = [
  "assets/moon_albedo.jpg",
  "assets/moon_height.jpg",
  "assets/peerjs.min.js",
- "assets/rival.json?v=a470ce34",
+ "assets/rival.json?v=9e2249c9",
  "assets/rival_longnose_map.webp",
  "assets/rival_longnose_mask.webp",
  "assets/rival_longnose_nrm.webp",
  "assets/rival_longnose_orm.webp",
+ "assets/rival_mo15_map.webp",
+ "assets/rival_mo15_mask.webp",
+ "assets/rival_mo15_nrm.webp",
+ "assets/rival_mo15_orm.webp",
  "assets/rival_muscle_map.webp",
  "assets/rival_muscle_mask.webp",
  "assets/rival_muscle_nrm.webp",
@@ -92,7 +96,7 @@ const PRECACHE = [
  "assets/rival_sting_orm.webp",
  "assets/three.module.min.js",
  "favicon.png",
- "game.js?v=2bc1ab2d3c",
+ "game.js?v=3946c0cad9",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
