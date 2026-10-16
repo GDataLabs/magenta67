@@ -6,7 +6,7 @@
 //  - other sites (online play's server, anything else): left alone
 //  - api/ (v16.0, Build my car): network only, except finished cars (api/car/geo), kept in 'm67cars-1'
 //  - a new build = a new sw.js = a new cache; the previous one is kept (for a page still running it), older ones deleted
-const BUILD = '87faa862ad-21d0348b';
+const BUILD = '7a84f92aef-0536e09e';
 const CACHE = 'm67-' + BUILD;
 const CARS = 'm67cars-1'; // (players' own cars: not tied to a build, so a new version of the game keeps them)
 const PRECACHE = [
@@ -49,6 +49,8 @@ const PRECACHE = [
  "assets/bld_shop_b_map.webp?h=57475ee2",
  "assets/bld_shop_b_orm.webp?h=0c2e55fd",
  "assets/bld_shop_b_win.webp?h=b31feb38",
+ "assets/bone_map.webp?h=e69f3422",
+ "assets/bone_nrm.webp?h=b4771dd2",
  "assets/carhq_map.webp?h=d80fa971",
  "assets/carhq_mask.webp?h=aa9d7c3a",
  "assets/carhq_nrm.webp?h=ff814afe",
@@ -74,6 +76,10 @@ const PRECACHE = [
  "assets/garage_rho.webp?h=40a74305",
  "assets/garage_shelby.webp?h=69cc4e72",
  "assets/garage_sting.webp?h=27ab6447",
+ "assets/gator_map.webp?h=078cffd7",
+ "assets/gator_nrm.webp?h=c9b5c717",
+ "assets/ice_map.webp?h=6018b91b",
+ "assets/ice_nrm.webp?h=41e80325",
  "assets/moon_albedo.jpg?h=1807cf19",
  "assets/moon_height.jpg?h=2299323f",
  "assets/peerjs.min.js",
@@ -102,9 +108,15 @@ const PRECACHE = [
  "assets/rival_sting_mask.webp?h=961ae9e9",
  "assets/rival_sting_nrm.webp?h=405af8c0",
  "assets/rival_sting_orm.webp?h=88338568",
+ "assets/skull_map.webp?h=f24961d5",
+ "assets/skull_nrm.webp?h=3567fbe0",
+ "assets/spine_map.webp?h=916679a4",
+ "assets/spine_nrm.webp?h=5dae36eb",
  "assets/three.module.min.js",
+ "assets/whale_map.webp?h=6ca2b2f5",
+ "assets/whale_nrm.webp?h=a2d3e529",
  "favicon.png",
- "game.js?v=87faa862ad",
+ "game.js?v=7a84f92aef",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
