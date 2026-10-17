@@ -6,7 +6,7 @@
 //  - other sites (online play's server, anything else): left alone
 //  - api/ (v16.0, Build my car): network only, except finished cars (api/car/geo), kept in 'm67cars-1'
 //  - a new build = a new sw.js = a new cache; the previous one is kept (for a page still running it), older ones deleted
-const BUILD = 'c699cdbd51-27d8c196';
+const BUILD = '4d90a82828-0a3cd360';
 const CACHE = 'm67-' + BUILD;
 const CARS = 'm67cars-1'; // (players' own cars: not tied to a build, so a new version of the game keeps them)
 const PRECACHE = [
@@ -63,7 +63,7 @@ const PRECACHE = [
  "assets/det_mud.webp?h=2dea34ba",
  "assets/det_rock.webp?h=c3dcf458",
  "assets/det_sand.webp?h=7e626800",
- "assets/det_snow.webp?h=07894fc9",
+ "assets/det_snow.webp?h=ac816165",
  "assets/fonts/archivo-latin-ext-standard-normal.woff2",
  "assets/fonts/archivo-latin-standard-normal.woff2",
  "assets/fonts/shrikhand-latin-400-normal.woff2",
@@ -123,7 +123,7 @@ const PRECACHE = [
  "assets/whale_map.webp?h=6ca2b2f5",
  "assets/whale_nrm.webp?h=a2d3e529",
  "favicon.png",
- "game.js?v=c699cdbd51",
+ "game.js?v=4d90a82828",
  "icon-192.png",
  "icon-512.png",
  "icon-maskable-512.png",
