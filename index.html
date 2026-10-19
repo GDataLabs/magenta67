@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="d728afd998"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') { addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {})); let m67sw = !!navigator.serviceWorker.controller; navigator.serviceWorker.addEventListener('controllerchange', () => { if (m67sw && !(window.__game && window.__game.driving)) location.reload(); m67sw = true; }); }</script></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="733ce2c009"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') { addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {})); let m67sw = !!navigator.serviceWorker.controller, m67ask = false; if (navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages(); navigator.serviceWorker.addEventListener('message', (ev) => { const d = ev.data; if (!m67ask || !d || d.t !== 'm67-cache') return; m67ask = false;  const mine = (document.querySelector('meta[name="m67-build"]') || {}).content; if (d.build && mine && String(d.build).split('-')[0] !== mine && !window.__game) location.reload(); }); navigator.serviceWorker.addEventListener('controllerchange', () => { if (m67sw) { const c = navigator.serviceWorker.controller; if (c) { m67ask = true; c.postMessage('m67-cache-status'); } } m67sw = true; }); }</script></head><body>
 
 <meta name="theme-color" content="#14213d">
 <style>
@@ -99,6 +99,45 @@ kbd { font-family: var(--f-ui); font-weight: 800; font-size: 11px; background: v
 #gauges { position: absolute; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 300px; height: 168px; }
 /* NOS bottle: charges above 100 mph */
 #nos { position: absolute; right: 24px; bottom: calc(184px + env(safe-area-inset-bottom, 0px)); width: 226px; padding: 7px 10px 8px; display: grid; grid-template-columns: auto 1fr; column-gap: 9px; row-gap: 3px; align-items: center; }
+#fmeter { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); top: calc(70px + env(safe-area-inset-top, 0px)); padding: 6px 8px 5px; display: grid; gap: 3px; justify-items: end; }
+#fmeter canvas { width: 150px; height: 34px; display: block; }
+#fmeter b { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.lb-nm { grid-template-columns: 116px minmax(0, 1fr); margin-top: 10px; }
+.lb-nm input, .lb-add input { font: inherit; font-weight: 800; font-size: 15px; color: var(--cream); background: rgba(255,244,224,.08); border: 1px solid var(--glass-line); border-radius: 8px; padding: 8px 10px; min-width: 0; -webkit-user-select: text; user-select: text; }
+.lb-add input { flex: 1 1 160px; text-transform: uppercase; letter-spacing: .06em; }
+.lb-codebox { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: rgba(255,244,224,.06); }
+.lb-codebox b { font-size: 20px; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+.lb-hint { margin-top: 4px; word-break: break-all; text-transform: none; }
+.lb-friends { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lbf { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 999px; border: 1px solid var(--glass-line); font-weight: 800; font-size: 13px; }
+.lbf button { border: 0; background: rgba(255,244,224,.1); color: var(--cream); border-radius: 999px; width: 24px; height: 24px; font-size: 15px; line-height: 1; padding: 0; }
+.lb-status { margin-top: 10px; text-transform: none; }
+.lb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.lb-head b { font-size: 17px; font-stretch: 108%; }
+.lb-seg { display: inline-flex; gap: 4px; margin-left: auto; }
+.lb-seg button { border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 12px; }
+.lb-seg button.on { background: var(--cream); color: var(--ink); }
+.lb-table td { vertical-align: middle; }
+.lb-car { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.lg-top { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 10px; }
+.lg-top b { font-size: 17px; font-stretch: 108%; }
+.lg-track { height: 10px; border-radius: 999px; background: rgba(255,244,224,.12); overflow: hidden; }
+.lg-track i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--magenta), var(--sun)); }
+#lgmap { display: block; width: min(100%, 440px); aspect-ratio: 1; margin: 10px auto 0; border-radius: 12px; border: 1px solid var(--glass-line); cursor: pointer; }
+.lg-area { margin-top: 14px; }
+.lg-f { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(255,244,224,.05); margin-top: 6px; transition: background .3s; }
+.lg-f i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--glass-line); display: grid; place-items: center; font-style: normal; font-weight: 900; font-size: 13px; }
+.lg-f.done i { background: var(--sun); border-color: var(--sun); color: var(--ink); }
+.lg-f.done b { color: var(--sun); }
+.lg-f .d { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.lg-f.flash { background: rgba(255,200,69,.22); }
+.lg-pr { font-size: 12px; font-weight: 800; color: #8fd8ff; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.lg-pin { border: 1px solid var(--glass-line); background: rgba(255,244,224,.06); color: var(--cream); border-radius: 999px; width: 32px; height: 32px; font-size: 15px; padding: 0; }
+.hx-p { margin: 6px 0; font-size: 13px; line-height: 1.45; }
+.hx-p.hx-m { color: var(--muted); font-size: 12px; }
+.hx-list { display: grid; gap: 6px; margin: 8px 0; }
+.hx-list div { padding: 8px 10px; border-radius: 10px; background: rgba(255,244,224,.06); font-size: 13px; line-height: 1.4; }
+.hx-list em { display: block; font-style: normal; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 #nos .nl { font-weight: 900; font-stretch: 115%; font-size: 13px; letter-spacing: .1em; color: #8fd8ff; }
 #nos .bar { height: 10px; border-radius: 999px; background: rgba(255,244,224,.12); overflow: hidden; }
 #nos .bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #3d6bff, #5ab4ff 60%, #c9f1ff); }
@@ -273,12 +312,26 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 @media (max-height: 520px) { #wmap { max-width: min(100%, calc(100vh - 170px)); } }
 /* phones on their side: the map goes beside the buttons and tabs instead of below them, so it fits without scrolling */
 @media (orientation: landscape) and (max-height: 520px) {
-  #pause .card.map-on { width: min(880px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 20px; align-items: start; }
-  #pause .card.map-on > * { grid-column: 1; }
-  #pause .card.map-on > #ps-map { grid-column: 2; grid-row: 1 / span 5; }
+  #pause .card.pz.map-on { width: min(880px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 20px; align-items: start; }
+  #pause .card.pz.map-on .pz-head { grid-column: 1; }
+  #pause .card.pz.map-on .pz-body { grid-column: 2; grid-row: 1; }
   #pause .card.map-on #wmap { width: calc(100vh - 112px); max-width: none; margin: 0; }
   #pause .card.map-on .wmap-hint { max-width: calc(100vh - 112px); }
 }
+/* v20.7 (Morgan: "clean up the organization of the pause screen menu"): the title, the buttons and the tabs stay put at the top
+   and only the page under them scrolls (on short screens the whole card scrolls, as before) */
+#pause .card.pz { width: min(700px, 100%); display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+#pause .pz-head { flex: none; padding-bottom: 8px; border-bottom: 1px solid var(--glass-line); }
+#pause .pz-head .tabs { gap: 5px; margin-bottom: 0; }
+#pause .pz-head .tabs button { padding: 7px 11px; }
+#pause .pz-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -22px; padding: 2px 22px 20px; overscroll-behavior: contain; }
+#pause .pz-sec { margin-top: 18px; }
+#pause .toggles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } /* (a group of one or two keeps its buttons button-sized) */
+#pause .pz-sec + .toggles, #pause .pz-sec + .sliders { margin-top: 8px; }
+#pause .toggles + .sliders { margin-top: 8px; }
+#pause .pz-intro { margin: 12px 0 4px; font-size: 13px; }
+@media (max-height: 560px) { #pause .card.pz { display: block; overflow: auto; padding-bottom: 20px; } #pause .pz-head { border-bottom: 0; } #pause .pz-body { overflow: visible; margin: 0; padding: 0; } }
+@media (max-width: 560px) { #pause .pz-head .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -22px; padding-inline: 22px; } #pause .pz-head .tabs::-webkit-scrollbar { display: none; } #pause .pz-head .tabs button { flex: none; } }
 .card h2 { font-family: var(--f-display); font-weight: 400; font-size: 38px; margin: 2px 0 6px; line-height: 1.05; text-wrap: balance; }
 .card p { margin: 0 0 14px; color: var(--muted); line-height: 1.45; }
 .card .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
@@ -402,6 +455,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
     <div id="chip" hidden></div>
     <div id="edrift" hidden><div class="label">Energy Drift</div><b id="ed-score">0</b><i id="ed-mult"></i></div>
     <div id="energy" class="panel" hidden><div class="nl">ENERGY</div><div class="bar"><i id="energy-fill"></i></div></div>
+    <div id="fmeter" class="panel" hidden><canvas id="fm-c" width="300" height="68" aria-label="Frame times, the last few seconds"></canvas><b id="fm-t">fps</b></div>
     <div id="nos" class="panel empty"><div class="nl">NOS</div><div class="bar"><i id="nos-fill"></i></div><div class="ns" id="nos-st">Charge above 100 mph</div></div>
   </div>
   <div id="nosfx"></div>
@@ -475,20 +529,27 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
     </div>
   </div>
   <div id="pause" class="overlay" hidden>
-    <div class="card panel">
-      <div class="label">Paused</div>
-      <h2>Pit stop</h2>
-      <div class="row" style="margin-top:6px">
-        <button class="btn primary" id="p-resume">Resume</button>
-        <button class="btn ghost" id="p-reset">Reset car</button>
-        <button class="btn ghost" id="p-restart" hidden>Restart race</button>
-        <button class="btn ghost" id="p-quit" hidden>Quit race</button>
-        <button class="btn ghost" id="p-menu">Main menu</button>
+    <div class="card panel pz">
+      <div class="pz-head">
+        <div class="label">Paused</div>
+        <h2>Pit stop</h2>
+        <div class="row" style="margin-top:6px">
+          <button class="btn primary" id="p-resume">Resume</button>
+          <button class="btn ghost" id="p-reset">Reset car</button>
+          <button class="btn ghost" id="p-restart" hidden>Restart race</button>
+          <button class="btn ghost" id="p-quit" hidden>Quit race</button>
+          <button class="btn ghost" id="p-menu">Main menu</button>
+        </div>
+        <div class="tabs" role="tablist"><button id="pt-map" class="on">Map</button><button id="pt-races">Sprints</button><button id="pt-champ">Championship</button><button id="pt-lb">Leaderboards</button><button id="pt-log">Logbook</button><button id="pt-ups">Upgrades</button><button id="pt-set">Settings</button></div>
       </div>
-      <div class="tabs"><button id="pt-map" class="on">Map</button><button id="pt-drive">Settings &amp; sprints</button><button id="pt-champ">Championship</button><button id="pt-ups">Upgrades</button><button id="pt-rec">Records</button></div>
+      <div class="pz-body">
       <div id="ps-map">
         <canvas id="wmap" width="1024" height="1024" aria-label="Map of the whole world"></canvas>
         <div class="label wmap-hint" id="wmap-hint">Tap a pink flag to drive to that sprint</div>
+      </div>
+      <div id="ps-races" hidden>
+        <p class="pz-intro">Drive to the start of any sprint. Pink flags on the map are the same sprints.</p>
+        <div class="racelist" id="p-races"></div>
       </div>
       <div id="ps-champ" hidden>
         <div class="label" id="ch-head" style="margin-top:10px">Championship</div>
@@ -498,43 +559,75 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <div class="row"><button class="btn primary" id="ch-go" hidden>Start round 1</button><button class="btn ghost" id="ch-new">Start the championship</button></div>
         <div class="row"><button class="btn ghost" id="ch-restart" hidden>Restart season</button><button class="btn ghost" id="ch-cancel" hidden>Cancel championship</button></div>
       </div>
+      <div id="ps-lb" hidden>
+        <div id="lb-me">
+          <label class="sl lb-nm" for="lb-name"><span>Your name</span><input id="lb-name" type="text" maxlength="16" autocomplete="off" spellcheck="false"></label>
+          <div class="lb-codebox"><span class="label">Your friend code</span><b id="lb-code">-----</b><button class="btn ghost small" id="lb-copy">Copy friend link</button></div>
+          <div class="label lb-hint" id="lb-codehint"></div>
+          <div class="row lb-add"><input id="lb-addcode" type="text" maxlength="12" placeholder="A friend's code" autocomplete="off" spellcheck="false"><button class="btn ghost small" id="lb-add">Add friend</button></div>
+          <div class="lb-friends" id="lb-friends"></div>
+          <div class="toggles"><button id="lb-on" title="Your best time on each sprint, with its run, goes on that sprint's board under your name"><span class="label">My times on the boards</span><b id="lb-on-v">On</b></button><button id="lb-ghost" title="Race your own best, and beside it the friend just ahead of you on that sprint's board"><span class="label">Ghosts</span><b id="lb-ghost-v">Yours + a friend's</b></button></div>
+        </div>
+        <p class="label lb-status" id="lb-status"></p>
+        <div class="racelist" id="lb-list"></div>
+        <div id="lb-board" hidden>
+          <div class="lb-head"><button class="btn ghost small" id="lb-back">All sprints</button><b id="lb-race"></b><span class="lb-seg"><button id="lb-all" class="on">Everyone</button><button id="lb-fr">Friends</button></span></div>
+          <table class="res lb-table" id="lb-table"></table>
+        </div>
+      </div>
+      <div id="ps-log" hidden>
+        <div class="lg-top"><b id="lg-head">0 of 0 done</b><div class="lg-track"><i id="lg-bar"></i></div></div>
+        <canvas id="lgmap" width="1024" height="1024" aria-label="Map of what's left to do"></canvas>
+        <div class="label wmap-hint" id="lg-hint"></div>
+        <div id="lg-list"></div>
+        <div class="label pz-sec">Your records</div>
+        <table class="res" id="rec-table"></table>
+      </div>
       <div id="ps-ups" hidden>
         <div class="upbar"><div class="label">Upgrades · points for wins, podiums, personal bests, the championship and gold snakes</div><div><span class="label">Points </span><b id="up-pts">0</b></div></div>
         <div class="label" id="up-perf" style="margin:2px 0 8px"></div>
         <div class="uplist" id="up-list"></div>
       </div>
-      <div id="ps-rec" hidden>
-        <div class="label" style="margin-top:10px">Your records</div>
-        <table class="res" id="rec-table"></table>
+      <div id="ps-set" hidden>
+        <div class="label pz-sec">Car and online</div>
+        <div class="toggles">
+          <button id="p-car"><span class="label">Car</span><b id="p-car-v">Magenta '67</b></button>
+          <button id="p-online"><span class="label">Online</span><b id="p-online-v">Play with friends</b></button>
+          <button id="p-controls"><span class="label">Controls</span><b>Change buttons</b></button>
+        </div>
+        <div class="label pz-sec">Sound</div>
+        <div class="toggles">
+          <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
+        </div>
+        <div class="sliders">
+          <label class="sl" for="p-musicvol"><span>Music</span><input type="range" id="p-musicvol" min="0" max="100" step="5" value="100"><b id="p-musicvol-v">100%</b></label>
+          <label class="sl" for="p-sfxvol"><span>Sound effects</span><input type="range" id="p-sfxvol" min="0" max="100" step="5" value="100"><b id="p-sfxvol-v">100%</b></label>
+          <label class="sl" for="p-turbovol"><span>Turbo</span><input type="range" id="p-turbovol" min="0" max="100" step="5" value="60"><b id="p-turbovol-v">60%</b></label>
+        </div>
+        <div class="label pz-sec">Driving</div>
+        <div class="toggles">
+          <button id="p-cam"><span class="label">Camera</span><b id="p-cam-v">Chase</b></button>
+          <button id="p-diff"><span class="label">Rivals</span><b id="p-diff-v">Normal</b></button>
+          <button id="p-ghost"><span class="label">Ghosts</span><b id="p-ghost-v">Yours + a friend's</b></button>
+          <button id="p-mirror"><span class="label">Rear-view mirror</span><b id="p-mirror-v">On</b></button>
+          <button id="p-steer"><span class="label">Steering</span><b id="p-steer-v">Wheel</b></button>
+          <button id="p-tch"><span class="label">Touch controls</span><b id="p-tch-v">Off</b></button>
+        </div>
+        <div class="label pz-sec">Picture</div>
+        <div class="toggles">
+          <button id="p-gfx"><span class="label">Graphics</span><b id="p-gfx-v">High</b></button>
+          <button id="p-fps" title="Auto: 60 fps on screens faster than 75 Hz, so every frame is shown for the same time (smooth, even pacing); Max: as fast as the screen"><span class="label">Frame rate</span><b id="p-fps-v">Auto</b></button>
+          <button id="p-ups" title="FSR 1-style upscaling: the world is drawn at fewer pixels, then rebuilt edge by edge and sharpened to the full screen. Auto: only when the game lowers the resolution to stay smooth"><span class="label">Upscaler</span><b id="p-ups-v">Auto</b></button>
+          <button id="p-glare" title="Stars of sunlight flashing off the cars' paint, glass and chrome when the sun is out"><span class="label">Sun glare</span><b id="p-glare-v">On</b></button>
+          <button id="p-tod"><span class="label">Time of day</span><b id="p-tod-v">Auto</b></button>
+          <button id="p-wx"><span class="label">Weather</span><b id="p-wx-v">Auto</b></button>
+          <button id="p-fs"><span class="label">Full screen</span><b id="p-fs-v">Off</b></button>
+          <button id="p-meter" title="The frame rate and the last few seconds of frames, top right: green on time, yellow late, red a hitch"><span class="label">Frame meter</span><b id="p-meter-v">Off</b></button>
+        </div>
+        <div class="label pz-sec">Smoothness</div>
+        <div id="hx-sum"></div>
+        <div class="row"><button class="btn small primary" id="hx-save">Save report</button><button class="btn small ghost" id="hx-copy">Copy report</button><button class="btn small ghost" id="hx-clear">Clear</button></div>
       </div>
-      <div id="ps-drive" hidden>
-      <div class="label" style="margin-top:12px">Volume</div>
-      <div class="sliders">
-        <label class="sl" for="p-musicvol"><span>Music</span><input type="range" id="p-musicvol" min="0" max="100" step="5" value="100"><b id="p-musicvol-v">100%</b></label>
-        <label class="sl" for="p-sfxvol"><span>Sound effects</span><input type="range" id="p-sfxvol" min="0" max="100" step="5" value="100"><b id="p-sfxvol-v">100%</b></label>
-        <label class="sl" for="p-turbovol"><span>Turbo</span><input type="range" id="p-turbovol" min="0" max="100" step="5" value="60"><b id="p-turbovol-v">60%</b></label>
-      </div>
-      <div class="toggles">
-        <button id="p-car"><span class="label">Car</span><b id="p-car-v">Magenta '67</b></button>
-        <button id="p-online"><span class="label">Online</span><b id="p-online-v">Play with friends</b></button>
-        <button id="p-controls"><span class="label">Controls</span><b>Change buttons</b></button>
-        <button id="p-cam"><span class="label">Camera</span><b id="p-cam-v">Chase</b></button>
-        <button id="p-diff"><span class="label">Rivals</span><b id="p-diff-v">Normal</b></button>
-        <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
-        <button id="p-fs"><span class="label">Full screen</span><b id="p-fs-v">Off</b></button>
-        <button id="p-gfx"><span class="label">Graphics</span><b id="p-gfx-v">High</b></button>
-        <button id="p-fps" title="Auto: 60 fps on screens faster than 75 Hz, so every frame is shown for the same time (smooth, even pacing); Max: as fast as the screen"><span class="label">Frame rate</span><b id="p-fps-v">Auto</b></button>
-        <button id="p-ups" title="FSR 1-style upscaling: the world is drawn at fewer pixels, then rebuilt edge by edge and sharpened to the full screen. Auto: only when the game lowers the resolution to stay smooth"><span class="label">Upscaler</span><b id="p-ups-v">Auto</b></button>
-        <button id="p-tod"><span class="label">Time of day</span><b id="p-tod-v">Auto</b></button>
-        <button id="p-wx"><span class="label">Weather</span><b id="p-wx-v">Auto</b></button>
-        <button id="p-tch"><span class="label">Touch controls</span><b id="p-tch-v">Off</b></button>
-        <button id="p-steer"><span class="label">Steering</span><b id="p-steer-v">Wheel</b></button>
-        <button id="p-ghost"><span class="label">Ghost of your best</span><b id="p-ghost-v">On</b></button>
-        <button id="p-mirror"><span class="label">Rear-view mirror</span><b id="p-mirror-v">On</b></button>
-        <button id="p-glare" title="Stars of sunlight flashing off the cars' paint, glass and chrome when the sun is out"><span class="label">Sun glare</span><b id="p-glare-v">On</b></button>
-      </div>
-      <div class="label" style="margin-top:16px">Sprints</div>
-      <div class="racelist" id="p-races"></div>
       </div>
     </div>
   </div>
@@ -550,7 +643,8 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <div class="label" style="margin-top:12px">Rivals</div>
       <p id="rc-rivals" style="margin-top:4px"></p>
       <p id="rc-online" class="online-note" hidden></p>
-      <div class="row"><button class="btn primary" id="rc-go">Start sprint</button><button class="btn ghost" id="rc-team" hidden>Team race: friends vs computer</button><button class="btn ghost" id="rc-friends" hidden>Friends only</button><button class="btn ghost" id="rc-solo" hidden>Just me vs the rivals</button><button class="btn ghost" id="rc-no">Not now</button></div>
+      <p id="rc-lb" class="diffnote" hidden></p>
+      <div class="row"><button class="btn primary" id="rc-go">Start sprint</button><button class="btn ghost" id="rc-board">Leaderboard</button><button class="btn ghost" id="rc-team" hidden>Team race: friends vs computer</button><button class="btn ghost" id="rc-friends" hidden>Friends only</button><button class="btn ghost" id="rc-solo" hidden>Just me vs the rivals</button><button class="btn ghost" id="rc-no">Not now</button></div>
     </div>
   </div>
   <div id="results" class="overlay" hidden>
@@ -642,5 +736,5 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=d728afd998"></script>
+<script type="module" src="game.js?v=733ce2c009"></script>
 </body></html>
