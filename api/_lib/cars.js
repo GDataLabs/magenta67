@@ -16,6 +16,7 @@ export async function engineCheck() {
 }
 import { defaults, clean } from './settings.js';
 import { invites, codeHash, today, sha, safeEq } from './util.js';
+import { boughtCap } from './shop.js'; // (v21.9: a bought build code works as an invite code does)
 
 export const VIEWS = ['front', 'left', 'back', 'right'];
 export const metaPath = (id) => `cars/${id}/meta.json`;
@@ -33,19 +34,20 @@ export function publicMeta(m) {
 function codeFromHash(hash) { for (const [c, cap] of invites()) if (codeHash(c) === hash) return [c, cap]; return null; }
 export async function useInvite(code, hashIn) {
   let c, cap;
-  if (hashIn) { const f = codeFromHash(hashIn); if (!f) return { ok: false, error: 'The invite code for this car has been switched off.' }; [c, cap] = f; }
-  else { c = String(code || '').trim().toUpperCase(); cap = invites().get(c); }
-  if (cap === undefined) return { ok: false, error: "That invite code isn't right." };
-  const h = codeHash(c), p = `invites/${h}.json`, rec = (await getJSON(p)) || { used: 0 };
-  if (rec.used >= cap) return { ok: false, error: 'That invite code has used all its builds.' };
+  let hB = null; // (a bought code, known only by its hash when a car is built again)
+  if (hashIn) { const f = codeFromHash(hashIn); if (f) [c, cap] = f; else { cap = await boughtCap(null, hashIn); if (cap === undefined) return { ok: false, error: 'The code for this car has been switched off.' }; hB = hashIn; } }
+  else { c = String(code || '').trim().toUpperCase(); cap = invites().get(c); if (cap === undefined) cap = await boughtCap(c); }
+  if (cap === undefined) return { ok: false, error: "That code isn't right." };
+  const h = hB || codeHash(c), p = `invites/${h}.json`, rec = (await getJSON(p)) || { used: 0 };
+  if (rec.used >= cap) return { ok: false, error: 'That code has used all its builds.' };
   // a cap on the whole site per day too, so a leaked code can't run up a bill
   const dp = `daily/${today()}.json`, day = (await getJSON(dp)) || { builds: 0, edits: 0 }, dayCap = +(process.env.M67_BUILDS_PER_DAY || 40);
-  if (day.builds >= dayCap) return { ok: false, error: 'Car building is busy today. Please try again tomorrow.' };
+  if (day.builds >= dayCap && invites().has(c || '')) return { ok: false, error: 'Car building is busy today. Please try again tomorrow.' }; // (v21.9: the day's cap is for invite codes; a bought build is paid for, and never turned away)
   rec.used++; day.builds++; await putJSON(p, rec); await putJSON(dp, day);
   return { ok: true, hash: h, left: cap - rec.used };
 }
 export async function refundInvite(hash) { const p = `invites/${hash}.json`, rec = await getJSON(p); if (rec && rec.used > 0) { rec.used--; await putJSON(p, rec); } }
-export async function inviteLeft(hash) { const f = codeFromHash(hash); if (!f) return 0; const rec = (await getJSON(`invites/${hash}.json`)) || { used: 0 }; return Math.max(0, f[1] - rec.used); }
+export async function inviteLeft(hash) { const f = codeFromHash(hash), cap = f ? f[1] : await boughtCap(null, hash); if (cap === undefined) return 0; const rec = (await getJSON(`invites/${hash}.json`)) || { used: 0 }; return Math.max(0, cap - rec.used); }
 
 // ---- photos: anything the player sends is decoded and saved again as a plain JPEG (no hidden data, no location tags)
 export async function cleanPhoto(dataUrl) {
