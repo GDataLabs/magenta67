@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="505834d63a"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js?v=1a86fc41"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') { addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {})); let m67sw = !!navigator.serviceWorker.controller, m67ask = false; if (navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages(); navigator.serviceWorker.addEventListener('message', (ev) => { const d = ev.data; if (!m67ask || !d || d.t !== 'm67-cache') return; m67ask = false;  const mine = (document.querySelector('meta[name="m67-build"]') || {}).content; if (d.build && mine && String(d.build).split('-')[0] !== mine && !window.__game) location.reload(); }); navigator.serviceWorker.addEventListener('controllerchange', () => { if (m67sw) { const c = navigator.serviceWorker.controller; if (c) { m67ask = true; c.postMessage('m67-cache-status'); } } m67sw = true; }); }</script></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="ffb851d58b"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js?v=1a86fc41"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') { addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {})); let m67sw = !!navigator.serviceWorker.controller, m67ask = false; if (navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages(); navigator.serviceWorker.addEventListener('message', (ev) => { const d = ev.data; if (!m67ask || !d || d.t !== 'm67-cache') return; m67ask = false;  const mine = (document.querySelector('meta[name="m67-build"]') || {}).content; if (d.build && mine && String(d.build).split('-')[0] !== mine && !window.__game) location.reload(); }); navigator.serviceWorker.addEventListener('controllerchange', () => { if (m67sw) { const c = navigator.serviceWorker.controller; if (c) { m67ask = true; c.postMessage('m67-cache-status'); } } m67sw = true; }); }</script></head><body>
 
 <meta name="theme-color" content="#14213d">
 <style>
@@ -56,15 +56,15 @@ button, .iconbtn { touch-action: manipulation; -webkit-touch-callout: none; } /*
 #loading h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(44px, 9vw, 92px); margin: 0; color: var(--cream); text-shadow: 0 4px 0 var(--magenta), 0 10px 30px rgba(20,33,61,.35); }
 #loading p { color: var(--ink); font-weight: 700; font-stretch: 115%; letter-spacing: .14em; text-transform: uppercase; font-size: 12px; }
 #loading .bar { width: min(320px, 70vw); height: 6px; border-radius: 6px; background: rgba(20,33,61,.2); margin: 14px auto 0; overflow: hidden; }
-#loading .bar i { display: block; height: 100%; width: 30%; background: var(--magenta); animation: load 1.2s ease-in-out infinite; }
+#loading .bar i { display: block; position: relative; overflow: hidden; height: 100%; width: 3%; background: var(--magenta); transition: width .35s ease-out; } /* (v22.59, Morgan: "the loading bar ... jumping forward in one of the steps and coming back": it only ever fills from the left now; before the first step it was a 30% piece sliding across and round again) */
 @keyframes load { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
 /* v22.54: the dots after the step's words keep pulsing and a shine keeps sweeping the bar, both as opacity/transform animations the browser runs off the main thread, so they still move while a long step (the cars) holds it */
 #loading .ld-dots i { display: inline-block; font-style: normal; opacity: .15; animation: lddot 1.2s ease-in-out infinite; }
 #loading .ld-dots i:nth-child(2) { animation-delay: .2s; } #loading .ld-dots i:nth-child(3) { animation-delay: .4s; }
 @keyframes lddot { 0%, 100% { opacity: .15; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 #loading .bar { position: relative; }
-#loading .bar::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent); animation: load 1.5s linear infinite; }
-#loading.err .ld-dots, #loading.err .bar::after { display: none; }
+#loading .bar i::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: load 1.5s linear infinite; } /* (the shine runs inside the filled part only, so it can't look like the bar reaching further and dropping back) */
+#loading.err .ld-dots, #loading.err .bar i::after { display: none; }
 
 #title-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 25; opacity: 0; transition: opacity 1.2s ease; pointer-events: none; background: transparent; }
 #title-video.on { opacity: 1; }
@@ -406,6 +406,12 @@ body.mirror-on #chip { top: calc(56px + min(7.5vw, 85px) + 8px + env(safe-area-i
 #on-players .op .btn { flex: none; } #on-players .op .net { font-size: 12px; white-space: nowrap; } #on-players .op .net.slow { color: #ff8a65; font-weight: 700; }
 @media (max-width: 560px) { .stu-shots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .on-nm { grid-template-columns: 116px minmax(0, 1fr); }
+/* v22.59: the trail picker */
+.on-trail { margin-top: 10px; } .on-trail .label b { color: var(--cream); text-transform: none; letter-spacing: .02em; }
+.on-trails { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.on-sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,244,224,.35); padding: 0; cursor: pointer; box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
+.on-sw.on { border-color: #fff4e0; box-shadow: 0 0 0 3px var(--magenta), inset 0 0 0 2px rgba(0,0,0,.25); }
+.on-sw:focus-visible { outline: 2px solid #fff4e0; outline-offset: 2px; }
 .onl input[type=text] { font: inherit; font-weight: 800; font-size: 15px; color: var(--cream); background: rgba(255,244,224,.08); border: 1px solid var(--glass-line); border-radius: 8px; padding: 8px 10px; min-width: 0; -webkit-user-select: text; user-select: text; }
 .on-join input { width: 9em; text-transform: uppercase; letter-spacing: .2em; }
 .on-codebox { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(255,244,224,.06); }
@@ -439,7 +445,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
 .toggles button { text-align: left; border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .toggles button b { display: block; font-size: 15px; font-stretch: 108%; }
 @media (max-width: 520px) { .card h2 { font-size: 30px; } #gauges { width: 240px; height: 134px; } #minimap { width: 128px; height: 128px; } #nos { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); width: 190px; } #energy { bottom: calc(204px + env(safe-area-inset-bottom, 0px)); width: 190px; } }
-@media (prefers-reduced-motion: reduce) { #loading .bar i { animation: none; width: 100%; } #loading .ld-dots i { animation: none; opacity: 1; } #loading .bar::after { display: none; } #place, #msg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #loading .bar i { transition: none; } #loading .ld-dots i { animation: none; opacity: 1; } #loading .bar i::after { display: none; } #place, #msg { transition: none; } }
 </style>
 
 <div id="app">
@@ -722,6 +728,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       <h2>Drive with friends</h2>
       <p id="on-intro">Make a room and send your friends the invite link or the code: up to 6 drivers, each in their own car. When anyone starts a sprint from a race marker, the whole room races it.</p>
       <label class="sl on-nm" for="on-name"><span>Your name</span><input id="on-name" type="text" maxlength="16" autocomplete="off" spellcheck="false"></label>
+      <div class="on-trail"><span class="label">Your trail · <b id="on-trail-v">Auto</b></span><div id="on-trails" class="on-trails"></div></div>
       <div id="on-start">
         <div class="row"><button class="btn primary" id="on-create">Make a room</button></div>
         <div class="row on-join"><input id="on-code" type="text" maxlength="5" placeholder="Room code" autocomplete="off" spellcheck="false"><button class="btn ghost" id="on-join">Join</button></div>
@@ -753,5 +760,5 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
   <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p><span id="ld-t">Building the island</span><span class="ld-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=505834d63a"></script>
+<script type="module" src="game.js?v=ffb851d58b"></script>
 </body></html>
