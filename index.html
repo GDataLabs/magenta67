@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="169b4c7a36"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') { addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {})); let m67sw = !!navigator.serviceWorker.controller, m67ask = false; if (navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages(); navigator.serviceWorker.addEventListener('message', (ev) => { const d = ev.data; if (!m67ask || !d || d.t !== 'm67-cache') return; m67ask = false;  const mine = (document.querySelector('meta[name="m67-build"]') || {}).content; if (d.build && mine && String(d.build).split('-')[0] !== mine && !window.__game) location.reload(); }); navigator.serviceWorker.addEventListener('controllerchange', () => { if (m67sw) { const c = navigator.serviceWorker.controller; if (c) { m67ask = true; c.postMessage('m67-cache-status'); } } m67sw = true; }); }</script></head><body>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><title>Magenta '67</title><meta name="description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:title" content="Magenta '67"><meta property="og:description" content="Drive a magenta 1967 fastback round a seaside island, up the Sky Highway to the Moon, and through energy portals. Free browser racing game."><meta property="og:type" content="website"><meta name="m67-build" content="e1fd19bda4"><meta property="og:url" content="https://magenta67.g-datalabs.com/"><meta property="og:image" content="https://magenta67.g-datalabs.com/preview.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://magenta67.g-datalabs.com/preview.jpg"><link rel="canonical" href="https://magenta67.g-datalabs.com/"><link rel="manifest" href="manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Magenta '67"><link rel="icon" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><script type="importmap">{"imports": {"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js": "./assets/three.module.min.js"}}</script><script>if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') { addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {})); let m67sw = !!navigator.serviceWorker.controller, m67ask = false; if (navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages(); navigator.serviceWorker.addEventListener('message', (ev) => { const d = ev.data; if (!m67ask || !d || d.t !== 'm67-cache') return; m67ask = false;  const mine = (document.querySelector('meta[name="m67-build"]') || {}).content; if (d.build && mine && String(d.build).split('-')[0] !== mine && !window.__game) location.reload(); }); navigator.serviceWorker.addEventListener('controllerchange', () => { if (m67sw) { const c = navigator.serviceWorker.controller; if (c) { m67ask = true; c.postMessage('m67-cache-status'); } } m67sw = true; }); }</script></head><body>
 
 <meta name="theme-color" content="#14213d">
 <style>
@@ -58,6 +58,13 @@ button, .iconbtn { touch-action: manipulation; -webkit-touch-callout: none; } /*
 #loading .bar { width: min(320px, 70vw); height: 6px; border-radius: 6px; background: rgba(20,33,61,.2); margin: 14px auto 0; overflow: hidden; }
 #loading .bar i { display: block; height: 100%; width: 30%; background: var(--magenta); animation: load 1.2s ease-in-out infinite; }
 @keyframes load { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+/* v22.54: the dots after the step's words keep pulsing and a shine keeps sweeping the bar, both as opacity/transform animations the browser runs off the main thread, so they still move while a long step (the cars) holds it */
+#loading .ld-dots i { display: inline-block; font-style: normal; opacity: .15; animation: lddot 1.2s ease-in-out infinite; }
+#loading .ld-dots i:nth-child(2) { animation-delay: .2s; } #loading .ld-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes lddot { 0%, 100% { opacity: .15; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+#loading .bar { position: relative; }
+#loading .bar::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent); animation: load 1.5s linear infinite; }
+#loading.err .ld-dots, #loading.err .bar::after { display: none; }
 
 #title-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 25; opacity: 0; transition: opacity 1.2s ease; pointer-events: none; background: transparent; }
 #title-video.on { opacity: 1; }
@@ -432,7 +439,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
 .toggles button { text-align: left; border: 1px solid var(--glass-line); background: rgba(255,244,224,.05); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .toggles button b { display: block; font-size: 15px; font-stretch: 108%; }
 @media (max-width: 520px) { .card h2 { font-size: 30px; } #gauges { width: 240px; height: 134px; } #minimap { width: 128px; height: 128px; } #nos { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); width: 190px; } #energy { bottom: calc(204px + env(safe-area-inset-bottom, 0px)); width: 190px; } }
-@media (prefers-reduced-motion: reduce) { #loading .bar i { animation: none; width: 100%; } #place, #msg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #loading .bar i { animation: none; width: 100%; } #loading .ld-dots i { animation: none; opacity: 1; } #loading .bar::after { display: none; } #place, #msg { transition: none; } }
 </style>
 
 <div id="app">
@@ -507,6 +514,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
       </div>
       <div class="row" style="margin-top:10px">
         <button class="btn ghost small" id="b-garage">Car: <b id="b-garage-v">Magenta '67</b></button>
+        <button class="btn ghost small" id="b-music">Music: <b id="b-music-v">Magenta Skyline</b></button>
         <button class="btn ghost small" id="b-online">Play online with friends</button>
       </div>
       <button class="btn small ghost" id="b-fsios" hidden>Play full screen on iPhone</button>
@@ -604,6 +612,7 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
         <div class="label pz-sec">Sound</div>
         <div class="toggles">
           <button id="p-snd"><span class="label">Sound</span><b id="p-snd-v">On</b></button>
+          <button id="p-song"><span class="label">Song</span><b id="p-song-v">Magenta Skyline</b></button>
         </div>
         <div class="sliders">
           <label class="sl" for="p-musicvol"><span>Music</span><input type="range" id="p-musicvol" min="0" max="100" step="5" value="100"><b id="p-musicvol-v">100%</b></label>
@@ -740,8 +749,8 @@ body.padnav button:focus, body.padnav input:focus { outline: 3px solid var(--sun
     </div>
     <div id="ctl-cap" hidden><div class="panel"><b id="ctl-cap-t">Press a button</b><p id="ctl-cap-h"></p><div class="row"><button class="btn ghost small" id="ctl-clear">Clear this slot</button><button class="btn ghost small" id="ctl-cancel">Cancel</button></div></div></div>
   </div>
-  <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p id="ld-t">Building the island…</p><div class="bar"><i></i></div></div></div>
+  <div id="loading"><div class="wrap"><h1>Magenta '67</h1><p><span id="ld-t">Building the island</span><span class="ld-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></p><div class="bar"><i></i></div></div></div>
 </div>
 
-<script type="module" src="game.js?v=169b4c7a36"></script>
+<script type="module" src="game.js?v=e1fd19bda4"></script>
 </body></html>
