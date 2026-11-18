@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { getJSON, putJSON, getBuf, putBuf } from './store.js';
 import { submit, poll, fetchModel, fetchPreview, which } from './provider.js';
+import { cleanBadges, cleanReady } from './clean.js'; // (v23.2: badges taken off the photos first)
 // (the image library and the car bake are loaded only when a car is being made, so the light functions (info, meta)
 // never depend on them; engineCheck() reports whether they load on this server)
 let _sharp = null;
@@ -63,6 +64,7 @@ export async function cleanPhoto(dataUrl) {
 
 // ---- start the 3D step for a car whose photos are saved (a first build, or Build it again)
 export async function startJob(m, origin) {
+  await cleanBadges(m, await getSharp()); // (v23.2: every badge, name and plate off the photos before the 3D service sees them: clean.js)
   m.photoToken = crypto.randomBytes(16).toString('hex'); m.photoUntil = Date.now() + 20 * 60e3;
   const urls = {}; for (const v of m.views) urls[v] = `${origin}/api/car/photo?id=${m.id}&view=${v}&t=${m.photoToken}`;
   m.job = await submit(urls, { seed: m.builds > 1 ? 1000 + m.builds : undefined, mockKind: m.mockKind });
@@ -120,4 +122,4 @@ export function addVersion(m, g, settings, note) {
   if (m.versions.length > 40) m.versions.splice(1, m.versions.length - 40); // (keep the first and the latest 39)
   m.cur = v; return v;
 }
-export const providerReady = () => !!which();
+export const providerReady = () => !!which() && cleanReady(); // (v23.2: no building without the badge cleanup)

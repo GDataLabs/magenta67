@@ -31,14 +31,14 @@ async function handler(req, res) {
       const ph = b.photos || {}, views = VIEWS.filter(v => typeof ph[v] === 'string' && ph[v]);
       if (views.length) {
         if (!views.includes('front') && !m.views.includes('front')) return fail(res, 400, 'A photo of the front is needed.');
-        for (const v of views) await putBuf(`cars/${m.id}/photo-${v}.jpg`, await cleanPhoto(ph[v]), 'image/jpeg');
+        for (const v of views) { await putBuf(`cars/${m.id}/photo-${v}.jpg`, await cleanPhoto(ph[v]), 'image/jpeg'); if (m.clean) delete m.clean[v]; } // (v23.2: a new photo is cleaned again)
         m.views = VIEWS.filter(v => views.includes(v) || m.views.includes(v));
       }
       m.builds = (m.builds || 1) + 1; m.lastCharge = inv.hash;
       const proto = req.headers['x-forwarded-proto'] || 'https', host = req.headers['x-forwarded-host'] || req.headers.host;
       await startJob(m, `${proto}://${host}`);
       return send(res, 200, { ok: true, state: m.state, left: inv.left, meta: publicMeta(m) });
-    } catch (e) { await refundInvite(inv.hash); return fail(res, /photo|picture/i.test(String(e.message)) ? 400 : 502, /photo|picture/i.test(String(e.message)) ? e.message : "Couldn't start the 3D step. Please try again in a bit."); }
+    } catch (e) { await refundInvite(inv.hash); if (e && e.player) return fail(res, 422, e.player); return fail(res, /photo|picture/i.test(String(e.message)) ? 400 : 502, /photo|picture/i.test(String(e.message)) ? e.message : "Couldn't start the 3D step. Please try again in a bit."); }
   }
 
   // ---- Edit my car (words)

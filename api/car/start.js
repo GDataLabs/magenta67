@@ -18,17 +18,19 @@ async function handler(req, res) {
   const photos = {};   // (checked and re-saved before an invite build is used)
   try { for (const v of views) photos[v] = await cleanPhoto(ph[v]); } catch (e) { return fail(res, 400, /photo|picture/i.test(String(e.message)) ? e.message : "A photo couldn't be read."); }
   const inv = await useInvite(b.code); if (!inv.ok) return fail(res, 403, inv.error);
+  let m0 = null;
   try {
     const id = newId(), key = newKey();
     for (const v of views) await putBuf(`cars/${id}/photo-${v}.jpg`, photos[v], 'image/jpeg');
     const m = { id, name, owner, size, created: Date.now(), keyHash: sha(key), codeHash: inv.hash, views, builds: 1, lastCharge: inv.hash, versions: [], geos: [], cur: 0, state: 'building',
       mockKind: typeof b.mock === 'string' && process.env.M67_MOCK_DIR ? b.mock.replace(/[^a-z]/g, '') : undefined };
-    await saveMeta(m);
+    await saveMeta(m); m0 = m;
     const proto = req.headers['x-forwarded-proto'] || 'https', host = req.headers['x-forwarded-host'] || req.headers.host;
     await startJob(m, `${proto}://${host}`);
     send(res, 200, { ok: true, id, key, left: inv.left, state: m.state });
   } catch (e) {
     await refundInvite(inv.hash);
+    if (e && e.player) { try { m0 && (m0.state = 'failed', m0.msg = e.player, await saveMeta(m0)); } catch { } return fail(res, 422, e.player); } // (v23.2: a badge that couldn't be taken off)
     fail(res, 502, "Couldn't start the 3D step. Please try again in a bit.");
   }
 }
